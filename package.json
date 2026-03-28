@@ -1,0 +1,30 @@
+{
+  "name": "session-deck",
+  "version": "0.1.0",
+  "description": "Web-based tmux workspace manager with live terminal panes",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev:server": "node --watch src/index.js",
+    "dev:client": "cd frontend && npm run dev",
+    "dev": "npm run dev:server & npm run dev:client",
+    "build": "cd frontend && npm run build",
+    "postinstall": "cd frontend && npm install"
+  },
+  "keywords": [
+    "tmux",
+    "terminal",
+    "workspace-manager"
+  ],
+  "author": "Jesse",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.0.0",
+    "@fastify/websocket": "^11.2.0",
+    "better-sqlite3": "^12.8.0",
+    "fastify": "^5.8.4",
+    "node-pty": "^1.1.0"
+  }
+}

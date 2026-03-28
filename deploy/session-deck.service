@@ -1,0 +1,27 @@
+[Unit]
+Description=Session Deck — Web-Based tmux Workspace Manager
+Documentation=https://github.com/jesseprojects/session-deck
+After=network.target
+
+[Service]
+Type=simple
+User=claude
+Group=claude
+WorkingDirectory=/opt/projects/session-deck
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=session-deck
+
+# Environment
+Environment=NODE_ENV=production
+Environment=SESSION_DECK_PORT=7890
+Environment=SESSION_DECK_LOG_LEVEL=info
+
+# Security — relaxed to allow tmux socket access and SSH to remote hosts
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

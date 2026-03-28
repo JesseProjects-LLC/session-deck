@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# GSD internal (keep .gsd/ tracked but not the DB)
+.gsd/gsd.db
+.gsd/gsd.db-shm
+.gsd/gsd.db-wal
+.gsd/event-log.jsonl
+.gsd/state-manifest.json
+.gsd/browser-state/
+.gsd/browser-baselines/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+.bg-shell/

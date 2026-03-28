@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session Deck — UI Playground v4</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg-base: #0a0e14;
+    --bg-surface: #0d1117;
+    --bg-elevated: #151b23;
+    --bg-terminal: #0b0e11;
+    --bg-hover: #1c2333;
+    --bg-drop: rgba(61,139,253,0.08);
+    --border: #1e2530;
+    --border-subtle: #161b22;
+    --border-focus: #3d8bfd;
+    --border-drop: rgba(61,139,253,0.4);
+    --text-primary: #c5cdd9;
+    --text-secondary: #6b7688;
+    --text-muted: #3d4450;
+    --accent-blue: #3d8bfd;
+    --accent-green: #7fd962;
+    --accent-amber: #ffb454;
+    --accent-red: #f07178;
+    --accent-purple: #c792ea;
+    --type-claude: #3d8bfd;
+    --type-gsd: #c792ea;
+    --type-terminal: #6b7688;
+    --radius: 6px;
+    --radius-lg: 10px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg-base); color: var(--text-primary); height: 100vh; overflow: hidden; }
+
+  /* ===== TOP NAV ===== */
+  .topnav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: var(--bg-elevated); border-bottom: 1px solid var(--border);
+    padding: 0 16px; height: 38px; display: flex; align-items: center; gap: 10px;
+  }
+  .topnav .logo { font-size: 13px; font-weight: 700; color: var(--accent-blue); font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+  .sep { width: 1px; height: 18px; background: var(--border); }
+  .view-sw { display: flex; gap: 2px; }
+  .vb { padding: 5px 12px; border-radius: var(--radius); border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 4px; }
+  .vb:hover { color: var(--text-primary); }
+  .vb.active { color: var(--accent-blue); background: rgba(61,139,253,0.08); border-color: rgba(61,139,253,0.2); }
+  .ws-tabs { display: flex; gap: 1px; margin-left: 6px; }
+  .wt { padding: 8px 12px; font-size: 12px; font-weight: 500; color: var(--text-secondary); border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.12s; display: flex; align-items: center; gap: 4px; font-family: 'DM Sans', sans-serif; }
+  .wt:hover { color: var(--text-primary); }
+  .wt.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+  .wt .cnt { font-size: 10px; color: var(--text-muted); }
+  .wt kbd { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 0 3px; border-radius: 3px; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-muted); }
+  .spacer { flex: 1; }
+  .nav-btn { padding: 5px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; transition: all 0.12s; display: flex; align-items: center; gap: 4px; }
+  .nav-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+  .nav-btn.open { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(61,139,253,0.08); }
+  .cmd-k { padding: 4px 8px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; }
+  .cmd-k:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
+
+  /* ===== TERMINAL PANE ===== */
+  .tp { background: var(--bg-terminal); border: 1px solid var(--border-subtle); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; overflow: hidden; transition: border-color 0.15s; }
+  .tp:hover { border-color: var(--border); }
+  .tp.focused { border-color: var(--accent-blue); }
+  .tp-h { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--bg-elevated); border-bottom: 1px solid var(--border-subtle); font-size: 11px; flex-shrink: 0; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.claude { background: var(--type-claude); box-shadow: 0 0 6px var(--type-claude); }
+  .dot.gsd { background: var(--type-gsd); box-shadow: 0 0 6px var(--type-gsd); }
+  .dot.terminal { background: var(--type-terminal); }
+  .tp-h .sn { color: var(--text-primary); font-weight: 500; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .tp-h .hn { color: var(--text-muted); font-size: 10px; }
+  .fbadge { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: rgba(61,139,253,0.15); color: var(--accent-blue); font-weight: 600; letter-spacing: 0.5px; }
+  .tbadge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 500; }
+  .tbadge.ai { background: rgba(61,139,253,0.1); color: var(--accent-blue); }
+  .tbadge.auto { background: rgba(199,146,234,0.1); color: var(--accent-purple); }
+  .tbadge.term { background: rgba(107,118,136,0.1); color: var(--text-secondary); }
+  .tp-acts { display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
+  .tp:hover .tp-acts { opacity: 1; }
+  .tp-a { width: 18px; height: 18px; border-radius: 3px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; }
+  .tp-a:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .tp-b { padding: 8px 10px; flex: 1; overflow: hidden; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; color: var(--accent-green); }
+  .tp-b .ln { margin-bottom: 1px; }
+  .tp-b .p { color: var(--accent-blue); }
+  .tp-b .c { color: var(--text-primary); }
+  .tp-b .o { color: var(--text-secondary); }
+  .tp-b .ok { color: var(--accent-green); }
+  .tp-b .e { color: var(--accent-red); }
+  .tp-b .cur { display: inline-block; width: 7px; height: 14px; background: var(--accent-green); vertical-align: text-bottom; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ===== SPLIT CONTAINERS ===== */
+  .split-h { display: flex; flex-direction: row; gap: 3px; width: 100%; height: 100%; }
+  .split-v { display: flex; flex-direction: column; gap: 3px; width: 100%; height: 100%; }
+  .split-h > *, .split-v > * { min-width: 0; min-height: 0; overflow: hidden; }
+
+  /* Resize handles */
+  .resize-h { width: 5px; cursor: col-resize; background: transparent; flex-shrink: 0; position: relative; z-index: 10; margin: 0 -4px; }
+  .resize-h:hover, .resize-h:active { background: var(--accent-blue); border-radius: 2px; opacity: 0.5; }
+  .resize-v { height: 5px; cursor: row-resize; background: transparent; flex-shrink: 0; position: relative; z-index: 10; margin: -4px 0; }
+  .resize-v:hover, .resize-v:active { background: var(--accent-blue); border-radius: 2px; opacity: 0.5; }
+
+  /* ===== FLOATING SESSION PANEL ===== */
+  .fpanel { position: fixed; top: 38px; right: 0; bottom: 24px; width: 280px; background: var(--bg-surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; z-index: 500; transition: transform 0.2s ease; box-shadow: -4px 0 24px rgba(0,0,0,0.3); }
+  .fpanel.closed { transform: translateX(100%); box-shadow: none; }
+  .fp-h { padding: 10px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .fp-h .fpt { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+  .fp-h .fb { width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+  .fp-h .fb:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+  .fp-s { padding: 8px 14px; flex-shrink: 0; }
+  .fp-s input { width: 100%; padding: 5px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-base); color: var(--text-primary); font-size: 12px; outline: none; }
+  .fp-s input::placeholder { color: var(--text-muted); }
+  .fp-s input:focus { border-color: var(--accent-blue); }
+  .fp-body { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+  .hg { padding: 4px 0; }
+  .hg-l { padding: 5px 14px; font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .hg-l:hover { color: var(--text-secondary); }
+  .hdot { width: 6px; height: 6px; border-radius: 50%; }
+  .hdot.on { background: var(--accent-green); }
+  .hdot.off { background: var(--accent-red); }
+  .hg-l .hc { margin-left: auto; font-size: 10px; }
+  .si { padding: 5px 14px 5px 28px; font-size: 12px; display: flex; align-items: center; gap: 7px; cursor: grab; transition: background 0.1s; border-radius: 3px; margin: 1px 4px; }
+  .si:hover { background: var(--bg-hover); }
+  .si .sl { flex: 1; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .abadge { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: rgba(127,217,98,0.1); color: var(--accent-green); font-weight: 500; }
+
+  /* ===== STATUS BAR ===== */
+  .sbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; background: var(--bg-elevated); border-top: 1px solid var(--border); padding: 3px 16px; display: flex; align-items: center; gap: 14px; font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; height: 24px; }
+  .sbar kbd { font-family: 'JetBrains Mono', monospace; font-size: 9px; padding: 0 3px; border-radius: 2px; background: var(--bg-base); border: 1px solid var(--border); color: var(--text-secondary); }
+
+  /* ===== WORKSPACE AREA ===== */
+  .ws-area { position: fixed; top: 38px; left: 0; bottom: 24px; right: 0; padding: 4px; transition: right 0.2s ease; }
+  .ws-area.panel-open { right: 280px; }
+
+  /* ===== PRESET SWITCHER ===== */
+  .preset-bar { position: fixed; top: 38px; left: 0; right: 0; z-index: 600; background: var(--bg-surface); border-bottom: 1px solid var(--border); padding: 6px 16px; display: flex; align-items: center; gap: 8px; }
+  .preset-bar .pl { font-size: 11px; color: var(--text-muted); margin-right: 4px; }
+  .pb { padding: 4px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s; }
+  .pb:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+  .pb.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(61,139,253,0.08); }
+  .ws-area.has-presets { top: 72px; }
+</style>
+</head>
+<body>
+
+<div class="topnav">
+  <span class="logo">SESSION DECK</span>
+  <div class="sep"></div>
+  <div class="view-sw">
+    <button class="vb active" onclick="switchView('ws', this)">⊞ Workspace</button>
+    <button class="vb" onclick="switchView('admin', this)">☰ Admin</button>
+  </div>
+  <div class="sep"></div>
+  <div class="ws-tabs" id="wsTabs"></div>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="panelBtn" onclick="togglePanel()">◧ Sessions</button>
+  <button class="cmd-k" onclick="togglePalette()">⌘K</button>
+</div>
+
+<!-- Layout preset bar -->
+<div class="preset-bar" id="presetBar">
+  <span class="pl">Layout:</span>
+  <button class="pb active" onclick="applyPreset('deck', this)">deck (4×3)</button>
+  <button class="pb" onclick="applyPreset('claude', this)">claude-focus (1+2)</button>
+  <button class="pb" onclick="applyPreset('infra', this)">infra (2+stack)</button>
+  <button class="pb" onclick="applyPreset('dual', this)">dual (2×1)</button>
+  <button class="pb" onclick="applyPreset('mixed', this)">mixed (complex)</button>
+</div>
+
+<!-- Workspace area -->
+<div class="ws-area has-presets panel-open" id="wsArea"></div>
+
+<!-- Floating session panel -->
+<div class="fpanel" id="fpanel">
+  <div class="fp-h">
+    <span class="fpt">Sessions</span>
+    <span class="spacer"></span>
+    <button class="fb" title="New session">+</button>
+  </div>
+  <div class="fp-s"><input type="text" placeholder="Filter sessions... (⌘K)"></div>
+  <div class="fp-body" id="fpSess"></div>
+</div>
+
+<!-- Status bar -->
+<div class="sbar">
+  <span>workspace: <span style="color:var(--accent-blue)" id="wsName">deck</span></span>
+  <span>panes: <span style="color:var(--text-secondary)" id="paneCount">12</span></span>
+  <span id="hostDots"></span>
+  <span class="spacer"></span>
+  <span><kbd>⌃1-4</kbd> workspace</span>
+  <span><kbd>⌃←→↑↓</kbd> navigate</span>
+  <span><kbd>⌃⇧F</kbd> zoom</span>
+  <span><kbd>⌃⇧H/V</kbd> split</span>
+  <span><kbd>⌃K</kbd> palette</span>
+</div>
+
+<!-- Command palette -->
+<div id="cmdOverlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:2000;display:none;align-items:flex-start;justify-content:center;padding-top:100px" onclick="if(event.target===this)togglePalette()">
+  <div style="width:520px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 16px 48px rgba(0,0,0,0.5);overflow:hidden">
+    <input type="text" id="cmdInput" placeholder="Search sessions, actions, workspaces..." style="width:100%;padding:12px 16px;border:none;background:transparent;color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;border-bottom:1px solid var(--border)" oninput="filterCmd(this.value)">
+    <div id="cmdResults" style="max-height:300px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<script>
+const WS = [
+  { name: 'deck', count: 12, key: '⌃1' },
+  { name: 'claude-focus', count: 3, key: '⌃2' },
+  { name: 'infra', count: 4, key: '⌃3' },
+  { name: 'gsd', count: 5, key: '⌃4' },
+];
+
+const HOSTS = [
+  { name: 'reliant', on: true }, { name: 'wayfarer', on: true },
+  { name: 'agamemnon', on: true }, { name: 'hexapuma', on: true },
+  { name: 'manticore', on: true }, { name: 'sirius', on: false },
+];
+
+let sessions = [];
+let panelOpen = true;
+
+const T = {
+  'claude-code': s => `<div class="ln"><span class="o">claude-code v2.31.0</span></div><div class="ln"><span class="p">❯ </span><span class="c">Task: Implement WebSocket syncing</span></div><div class="ln"><span class="ok">✓</span> <span class="o">Found 143 files, parsed routing config.</span></div><div class="ln"><span class="ok">✓</span> <span class="o">Identified src/store/gridStore.ts</span></div><div class="ln"></div><div class="ln"><span class="o">// Generating patch...</span></div><div class="ln"><span class="e">-</span> <span class="o">updateLayout(newLayout) {</span></div><div class="ln"><span class="ok">+</span> <span class="c">updateLayout(newLayout) {</span></div><div class="ln"><span class="ok">+</span> <span class="c">  wsClient.broadcast({ type: 'UPDATE' });</span></div>`,
+  'gsd': s => `<div class="ln"><span class="ok">GSD v2.56.0</span> <span class="o">— Get Shit Done</span></div><div class="ln"><span class="o">Target: </span><span class="c">${s.name.replace('gsd-','')}</span></div><div class="ln"></div><div class="ln"><span class="o">⇒ Applying state configuration...</span></div><div class="ln"><span class="ok">[OK]</span> <span class="o">System packages up to date</span></div><div class="ln"><span class="ok">[OK]</span> <span class="o">Docker service running</span></div><div class="ln"><span class="ok">[OK]</span> <span class="o">Pre-flight checks passed.</span></div>`,
+  'terminal': s => `<div class="ln"><span class="p">claude@reliant:~$ </span><span class="c">ls -la</span></div><div class="ln"><span class="o">total 148</span></div><div class="ln"><span class="o">drwxr-xr-x  12 claude staff   384 Oct 24 .</span></div><div class="ln"><span class="o">drwxr-xr-x  45 claude staff  1440 Oct 23 ..</span></div><div class="ln"><span class="o">drwxr-xr-x   8 claude staff   256 Oct 24 </span><span class="ok">.git</span></div><div class="ln"><span class="o">-rw-r--r--   1 claude staff  8452 Oct 24 README.md</span></div><div class="ln"><span class="o">drwxr-xr-x   4 claude staff   128 Oct 24 </span><span class="ok">src</span></div>`,
+};
+
+function pane(s, focused) {
+  if (!s) return '<div style="background:var(--bg-base);border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px;width:100%;height:100%">Drop session</div>';
+  const dc = s.type==='claude-code'?'claude':s.type==='gsd'?'gsd':'terminal';
+  const bc = s.type==='claude-code'?'ai':s.type==='gsd'?'auto':'term';
+  const bl = s.type==='claude-code'?'AI':s.type==='gsd'?'AUTO':'TERM';
+  const body = (T[s.type]||T.terminal)(s);
+  return `<div class="tp${focused?' focused':''}" style="width:100%;height:100%">
+    <div class="tp-h">
+      <span class="dot ${dc}"></span>
+      <span class="sn">${s.name}</span>
+      <span class="hn">reliant</span>
+      <span class="spacer"></span>
+      ${focused?'<span class="fbadge">FOCUSED</span>':''}
+      <span class="tbadge ${bc}">${bl}</span>
+      <div class="tp-acts">
+        <button class="tp-a" title="Split horizontal">⊟</button>
+        <button class="tp-a" title="Split vertical">⊞</button>
+        <button class="tp-a" title="Zoom">⤢</button>
+        <button class="tp-a" title="Close">✕</button>
+      </div>
+    </div>
+    <div class="tp-b">${body}<div class="ln"><span class="p">❯ </span><span class="cur"></span></div></div>
+  </div>`;
+}
+
+// Split tree → HTML renderer
+function renderSplit(node, depth) {
+  if (node.session !== undefined) {
+    const s = sessions[node.session] || sessions[0];
+    return `<div style="flex:${node.size || 1};min-width:0;min-height:0;overflow:hidden">${pane(s, node.focused)}</div>`;
+  }
+  const dir = node.split === 'h' ? 'row' : 'column';
+  const resizeClass = node.split === 'h' ? 'resize-h' : 'resize-v';
+  const kids = node.children.map((c, i) => {
+    const html = renderSplit(c, depth + 1);
+    if (i < node.children.length - 1) {
+      return html + `<div class="${resizeClass}"></div>`;
+    }
+    return html;
+  }).join('');
+  return `<div style="display:flex;flex-direction:${dir};gap:3px;flex:${node.size||1};min-width:0;min-height:0;overflow:hidden">${kids}</div>`;
+}
+
+// Preset layouts — all using split trees
+const PRESETS = {
+  // 4×3 = 4 columns, each with 3 rows
+  deck: {
+    split: 'h', children: [
+      { split: 'v', size: 1, children: [{ session: 0, size: 1, focused: true }, { session: 4, size: 1 }, { session: 8, size: 1 }] },
+      { split: 'v', size: 1, children: [{ session: 1, size: 1 }, { session: 5, size: 1 }, { session: 9, size: 1 }] },
+      { split: 'v', size: 1, children: [{ session: 2, size: 1 }, { session: 6, size: 1 }, { session: 10, size: 1 }] },
+      { split: 'v', size: 1, children: [{ session: 3, size: 1 }, { session: 7, size: 1 }, { session: 11, size: 1 }] },
+    ]
+  },
+  // claude-focus: 1 big hero left (60%), 2 stacked right (40%)
+  claude: {
+    split: 'h', children: [
+      { session: 0, size: 3, focused: true },
+      { split: 'v', size: 2, children: [{ session: 1, size: 1 }, { session: 2, size: 1 }] },
+    ]
+  },
+  // infra: 2 wide top (60%), 2 stacked narrow bottom (40%)
+  infra: {
+    split: 'v', children: [
+      { split: 'h', size: 3, children: [{ session: 0, size: 1, focused: true }, { session: 1, size: 1 }] },
+      { split: 'h', size: 2, children: [{ session: 2, size: 1 }, { session: 3, size: 1 }] },
+    ]
+  },
+  // dual: simple side by side
+  dual: {
+    split: 'h', children: [
+      { session: 0, size: 1, focused: true },
+      { session: 1, size: 1 },
+    ]
+  },
+  // mixed: complex — big left, right column with 3 stacked, bottom bar
+  mixed: {
+    split: 'v', children: [
+      {
+        split: 'h', size: 4, children: [
+          { session: 0, size: 3, focused: true },
+          { split: 'v', size: 2, children: [
+            { session: 1, size: 1 },
+            { session: 2, size: 1 },
+            { session: 3, size: 1 },
+          ]},
+        ]
+      },
+      {
+        split: 'h', size: 1, children: [
+          { session: 4, size: 1 },
+          { session: 5, size: 1 },
+        ]
+      },
+    ]
+  },
+};
+
+function applyPreset(name, el) {
+  document.querySelectorAll('.pb').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  else document.querySelector(`.pb[onclick*="${name}"]`)?.classList.add('active');
+  const tree = PRESETS[name];
+  document.getElementById('wsArea').innerHTML = renderSplit(tree, 0);
+  // Update status
+  const count = countPanes(tree);
+  document.getElementById('paneCount').textContent = count;
+  document.getElementById('wsName').textContent = name === 'claude' ? 'claude-focus' : name;
+}
+
+function countPanes(node) {
+  if (node.session !== undefined) return 1;
+  return node.children.reduce((s, c) => s + countPanes(c), 0);
+}
+
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('fpanel').classList.toggle('closed', !panelOpen);
+  document.getElementById('wsArea').classList.toggle('panel-open', panelOpen);
+  document.getElementById('panelBtn').classList.toggle('open', panelOpen);
+}
+
+function switchView(v, el) {
+  document.querySelectorAll('.vb').forEach(b => b.classList.remove('active'));
+  if (el) el.closest('.vb').classList.add('active');
+  // For this mockup, just toggle preset bar visibility
+  document.getElementById('presetBar').style.display = v === 'ws' ? 'flex' : 'none';
+  document.getElementById('wsArea').classList.toggle('has-presets', v === 'ws');
+  if (v === 'admin') {
+    document.getElementById('wsArea').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-muted);font-size:14px">Admin view — see v3 playground for full admin mockup</div>';
+  } else {
+    applyPreset('deck');
+  }
+}
+
+function togglePalette() {
+  const el = document.getElementById('cmdOverlay');
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'flex' : 'none';
+  if (show) { document.getElementById('cmdInput').value = ''; document.getElementById('cmdInput').focus(); renderCmds(''); }
+}
+const CMDS = [
+  { i: '⊞', l: 'Switch to: deck', h: '⌃1', c: 'workspace' },
+  { i: '⊞', l: 'Switch to: claude-focus', h: '⌃2', c: 'workspace' },
+  { i: '⊞', l: 'Switch to: infra', h: '⌃3', c: 'workspace' },
+  { i: '+', l: 'New Session', h: '⌃⇧N', c: 'session' },
+  { i: '⊟', l: 'Split Horizontal', h: '⌃⇧H', c: 'layout' },
+  { i: '⊞', l: 'Split Vertical', h: '⌃⇧V', c: 'layout' },
+  { i: '✕', l: 'Close Pane', h: '⌃W', c: 'pane' },
+  { i: '⤢', l: 'Zoom Pane', h: '⌃⇧F', c: 'pane' },
+  { i: '↻', l: 'Reconnect Pane', h: '', c: 'pane' },
+];
+function renderCmds(f) {
+  const items = f ? CMDS.filter(c=>c.l.toLowerCase().includes(f.toLowerCase())) : CMDS;
+  document.getElementById('cmdResults').innerHTML = items.map(c =>
+    `<div style="padding:8px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;transition:background 0.08s" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''"><span style="color:var(--text-muted);width:18px;text-align:center">${c.i}</span><span style="flex:1;color:var(--text-primary)">${c.l}</span><span style="font-size:10px;color:var(--text-muted);padding:1px 6px;background:var(--bg-base);border-radius:3px">${c.c}</span>${c.h?`<span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-muted)">${c.h}</span>`:''}</div>`
+  ).join('');
+}
+function filterCmd(v) { renderCmds(v); }
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key === 'k') { e.preventDefault(); togglePalette(); }
+  if (e.key === 'Escape') document.getElementById('cmdOverlay').style.display = 'none';
+});
+
+async function init() {
+  try { const r = await fetch('/api/sessions/reliant'); const d = await r.json(); sessions = d.sessions || []; } catch {}
+  if (!sessions.length) {
+    // Fallback mock data
+    sessions = ['main','homelab','onsite','business','gsd-clawdeck','gsd-homelab','gsd-placer','openclaw','other','placer','social','gsd-onsite'].map((n,i) => ({
+      name: n, type: n.startsWith('gsd-')?'gsd':['main','homelab','onsite'].includes(n)?'claude-code':'terminal',
+      windows: 1, attached: true, attachedCount: 1, created: Date.now()
+    }));
+  }
+
+  // Workspace tabs
+  document.getElementById('wsTabs').innerHTML = WS.map((w,i) =>
+    `<button class="wt${i===0?' active':''}">${w.name} <span class="cnt">${w.count}</span> <kbd>${w.key}</kbd></button>`
+  ).join('') + '<button class="wt" style="color:var(--text-muted)">+</button>';
+
+  // Session panel
+  let sh = '<div class="hg"><div class="hg-l"><span class="hdot on"></span> RELIANT <span style="color:var(--text-muted);font-weight:400;text-transform:none">local</span> <span class="hc">' + sessions.length + '</span></div>';
+  sessions.forEach(s => {
+    const dc = s.type==='claude-code'?'claude':s.type==='gsd'?'gsd':'terminal';
+    sh += `<div class="si"><span class="dot ${dc}"></span><span class="sl">${s.name}</span>${s.attached?'<span class="abadge">Active</span>':''}</div>`;
+  });
+  sh += '</div>';
+  ['WAYFARER VPS 2','AGAMEMNON NAS 3','HEXAPUMA Docker 1','MANTICORE Proxmox 2'].forEach(h => {
+    const [n,l,c] = h.split(' ');
+    sh += `<div class="hg"><div class="hg-l"><span class="hdot on"></span> ${n} <span style="color:var(--text-muted);font-weight:400;text-transform:none">${l}</span> <span class="hc">${c}</span></div></div>`;
+  });
+  sh += '<div class="hg"><div class="hg-l"><span class="hdot off"></span> SIRIUS <span style="color:var(--text-muted);font-weight:400;text-transform:none">VPS</span> <span class="hc">0</span></div></div>';
+  document.getElementById('fpSess').innerHTML = sh;
+
+  // Host dots
+  document.getElementById('hostDots').innerHTML = HOSTS.map(h => `<span style="margin-right:1px">${h.name}</span><span class="hdot ${h.on?'on':'off'}" style="display:inline-block;width:6px;height:6px;border-radius:50%"></span>`).join(' ');
+
+  // Render default layout
+  applyPreset('deck');
+}
+
+init();
+</script>
+</body>
+</html>
