@@ -6,9 +6,11 @@
     node,
     path = [],
     focusedId = null,
+    zoomedId = null,
     onFocus = () => {},
     onLayoutChange = () => {},
     onSessionPick = () => {},
+    onZoom = () => {},
   } = $props();
 
   let resizing = $state(false);
@@ -72,7 +74,9 @@
       session={node.session}
       host={node.host || 'reliant'}
       focused={focusedId === nodeId(node)}
+      zoomed={zoomedId === nodeId(node)}
       onSessionClick={() => handleSessionClick(node.session)}
+      onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
     />
   </div>
 {:else if node.split && node.children}
@@ -87,9 +91,11 @@
         node={child}
         path={[...path, i]}
         {focusedId}
+        {zoomedId}
         {onFocus}
         {onLayoutChange}
         {onSessionPick}
+        {onZoom}
       />
       {#if i < node.children.length - 1}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->

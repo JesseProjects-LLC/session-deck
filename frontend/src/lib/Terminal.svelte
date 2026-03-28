@@ -4,7 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
 
-  let { session = 'main', host = 'reliant', focused = false, onSessionClick = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null } = $props();
 
   let containerEl;
   let term;
@@ -154,7 +154,7 @@
   });
 </script>
 
-<div class="term-pane" class:focused>
+<div class="term-pane" class:focused class:zoomed>
   <div class="pane-hdr">
     <span class="dot {typeClass(session)}"></span>
     {#if onSessionClick}
@@ -178,7 +178,7 @@
     <div class="pane-actions">
       <button class="pane-act" title="Split horizontal">⊟</button>
       <button class="pane-act" title="Split vertical">⊞</button>
-      <button class="pane-act" title="Zoom">⤢</button>
+      <button class="pane-act" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>{zoomed ? '⤡' : '⤢'}</button>
       <button class="pane-act" title="Close">✕</button>
     </div>
   </div>
@@ -199,6 +199,7 @@
   }
   .term-pane:hover { border-color: #1e2530; }
   .term-pane.focused { border-color: #3d8bfd; }
+  .term-pane.zoomed { border-color: #7fd962; }
 
   .pane-hdr {
     display: flex; align-items: center; gap: 6px;

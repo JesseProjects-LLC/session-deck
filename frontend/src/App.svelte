@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
+  import Terminal from './lib/Terminal.svelte';
   import { countPanes, presets, leaf } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
@@ -16,6 +17,7 @@
   let loading = $state(true);
   let showSessionPicker = $state(null);
   let showPropsPanel = $state(false);
+  let zoomedPane = $state(null); // { id, session, host } when a pane is zoomed
 
   // Workspace management modals
   let showNewWsModal = $state(false);
@@ -88,12 +90,22 @@
 
   function switchWorkspace(id) {
     focusedId = null;
+    zoomedPane = null;
     showSessionPicker = null;
     contextMenu = null;
     setActive(id);
   }
 
   function handleFocus(id) { focusedId = id; }
+
+  function handleZoom(id, session, host) {
+    if (zoomedPane && zoomedPane.id === id) {
+      zoomedPane = null; // Unzoom
+    } else {
+      zoomedPane = { id, session, host };
+      focusedId = id;
+    }
+  }
 
   function handleLayoutChange() {
     if (activeId && activeLayout) updateLayout(activeId, activeLayout);
@@ -231,8 +243,9 @@
       return;
     }
 
-    // Escape to close panels/menus
+    // Escape to close panels/menus/unzoom
     if (e.key === 'Escape') {
+      if (zoomedPane) { zoomedPane = null; return; }
       contextMenu = null;
       return;
     }
@@ -271,7 +284,9 @@
       <button class="wt add-btn" onclick={openNewWsModal} title="New workspace (N)">+</button>
     </div>
     <span class="spacer"></span>
-    {#if activeLayout}
+    {#if zoomedPane}
+      <span class="pane-count zoom-indicator">⤢ {zoomedPane.session}</span>
+    {:else if activeLayout}
       <span class="pane-count">{countPanes(activeLayout)} panes</span>
     {/if}
     <button
@@ -286,14 +301,27 @@
     <main class="content">
       {#if loading}
         <div class="center-msg">Loading workspaces...</div>
+      {:else if zoomedPane && activeId}
+        <div class="zoomed-container">
+          <Terminal
+            session={zoomedPane.session}
+            host={zoomedPane.host}
+            focused={true}
+            zoomed={true}
+            onZoom={() => { zoomedPane = null; }}
+            onSessionClick={() => openSessionPicker([], zoomedPane.session)}
+          />
+        </div>
       {:else if activeLayout && activeId}
         {#key activeId}
           <SplitPane
             node={activeLayout}
             {focusedId}
+            zoomedId={null}
             onFocus={handleFocus}
             onLayoutChange={handleLayoutChange}
             onSessionPick={openSessionPicker}
+            onZoom={handleZoom}
           />
         {/key}
       {:else}
@@ -499,6 +527,7 @@
     <span class="shortcut"><kbd>1-9</kbd> switch</span>
     <span class="shortcut"><kbd>N</kbd> new</span>
     <span class="shortcut"><kbd>⌃P</kbd> props</span>
+    <span class="shortcut"><kbd>Esc</kbd> unzoom</span>
   </footer>
 </div>
 
@@ -541,6 +570,8 @@
   .main-row { flex: 1; display: flex; overflow: hidden; }
   .content { flex: 1; overflow: hidden; padding: 3px; }
   .center-msg { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 14px; color: #6b7688; }
+  .zoomed-container { width: 100%; height: 100%; }
+  .zoom-indicator { color: #7fd962; }
 
   /* Properties panel */
   .props-panel {
