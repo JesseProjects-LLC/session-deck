@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
   import Terminal from './lib/Terminal.svelte';
-  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames } from './lib/stores/layout.js';
+  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, movePane } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
@@ -185,6 +185,22 @@
     }
   }
 
+  function handlePaneDrop(sourceSession, targetSession, position) {
+    if (!activeLayout || !activeId) return;
+    const newLayout = movePane(activeLayout, sourceSession, targetSession, position);
+    if (newLayout) {
+      activeLayout = newLayout;
+      focusedId = null;
+      zoomedPane = null;
+      const tmp = activeId;
+      activeId = null;
+      setTimeout(() => {
+        activeId = tmp;
+        updateLayout(tmp, newLayout);
+      }, 50);
+      toast(`Moved ${sourceSession} ${position} of ${targetSession}`, 'info');
+    }
+  }
   function openSessionPicker(path, currentSession) {
     showSessionPicker = { path, currentSession };
   }
@@ -399,6 +415,7 @@
             onZoom={handleZoom}
             onSplit={handleSplitPane}
             onClose={handleClosePane}
+            onDrop={handlePaneDrop}
           />
         {/key}
       {:else}

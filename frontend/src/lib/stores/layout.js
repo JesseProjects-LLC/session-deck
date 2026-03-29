@@ -175,3 +175,76 @@ export function splitPaneAt(root, path, direction, newSession = 'main', newHost 
 
   return root;
 }
+
+/**
+ * Move a pane from one location to adjacent to another pane.
+ * sourceSession: session name of the pane being dragged
+ * targetSession: session name of the drop target
+ * position: 'left' | 'right' | 'top' | 'bottom'
+ * Returns new root (deep cloned).
+ */
+export function movePane(root, sourceSession, targetSession, position) {
+  if (sourceSession === targetSession) return root;
+
+  // Deep clone
+  root = JSON.parse(JSON.stringify(root));
+
+  // Find source path
+  const sourcePath = findPathBySession(root, sourceSession);
+  if (!sourcePath) return root;
+
+  // Grab the source leaf data
+  let sourceNode = root;
+  for (const idx of sourcePath) sourceNode = sourceNode.children[idx];
+  const sourceLeaf = { session: sourceNode.session, host: sourceNode.host, size: 1 };
+
+  // Remove source from tree
+  root = removePane(root, sourcePath);
+  if (!root) return { ...sourceLeaf }; // Was the only pane
+
+  // Find target in the modified tree
+  const targetPath = findPathBySession(root, targetSession);
+  if (!targetPath) return root;
+
+  // Navigate to target
+  let targetNode = root;
+  let targetParent = null;
+  let targetIdx = -1;
+  for (let i = 0; i < targetPath.length; i++) {
+    targetParent = targetNode;
+    targetIdx = targetPath[i];
+    targetNode = targetNode.children[targetPath[i]];
+  }
+
+  if (!targetNode) return root;
+
+  const direction = (position === 'left' || position === 'right') ? 'h' : 'v';
+  const insertBefore = (position === 'left' || position === 'top');
+
+  const newSplit = {
+    split: direction,
+    size: targetNode.size || 1,
+    children: insertBefore
+      ? [sourceLeaf, { ...targetNode, size: 1 }]
+      : [{ ...targetNode, size: 1 }, sourceLeaf],
+  };
+
+  if (targetParent) {
+    targetParent.children[targetIdx] = newSplit;
+  } else {
+    root = newSplit;
+  }
+
+  return root;
+}
+
+function findPathBySession(node, sessionName, path = []) {
+  if (node.session === sessionName) return path;
+  if (node.children) {
+    for (let i = 0; i < node.children.length; i++) {
+      const found = findPathBySession(node.children[i], sessionName, [...path, i]);
+      if (found) return found;
+    }
+  }
+  return null;
+}

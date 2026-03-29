@@ -4,7 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null } = $props();
 
   let containerEl;
   let term;
@@ -14,6 +14,8 @@
   let resizeTimer;
   let lastCols = 0;
   let lastRows = 0;
+  let suppressResize = false;
+  let suppressTimer;
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
@@ -53,7 +55,11 @@
     };
 
     ws.onmessage = (event) => {
+      // Suppress resize events while receiving output to break redraw loops
+      suppressResize = true;
       term.write(event.data);
+      clearTimeout(suppressTimer);
+      suppressTimer = setTimeout(() => { suppressResize = false; }, 200);
     };
 
     ws.onclose = (event) => {
@@ -76,6 +82,7 @@
   function disconnect() {
     clearTimeout(reconnectTimer);
     clearTimeout(resizeTimer);
+    clearTimeout(suppressTimer);
     if (ws) {
       ws.onclose = null; // Prevent reconnect on intentional close
       ws.close(1000, 'Client disconnect');
@@ -141,14 +148,20 @@
       }
     });
 
-    // Resize observer — debounced to prevent resize/redraw loops
+    // Resize observer — debounced + suppressed during output to prevent resize/redraw loops
     const resizeObserver = new ResizeObserver(() => {
-      if (!fitAddon || containerEl.offsetWidth <= 0) return;
+      if (!fitAddon || !containerEl) return;
+      // Skip if container is too small (causes oscillation) or output is streaming
+      if (containerEl.offsetWidth < 80 || containerEl.offsetHeight < 40) return;
+      if (suppressResize) return;
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        fitAddon.fit();
+        if (suppressResize) return; // Re-check after debounce
+        try {
+          fitAddon.fit();
+        } catch { return; }
         sendResize();
-      }, 150);
+      }, 250);
     });
     resizeObserver.observe(containerEl);
 
@@ -169,8 +182,15 @@
 </script>
 
 <div class="term-pane" class:focused class:zoomed>
-  <div class="pane-hdr">
-    <span class="dot {typeClass(session)}"></span>
+  <div
+    class="pane-hdr"
+    draggable="true"
+    ondragstart={(e) => {
+      e.dataTransfer.setData('text/plain', session);
+      e.dataTransfer.effectAllowed = 'move';
+      onDragStart?.(session, host);
+    }}
+  >    <span class="dot {typeClass(session)}"></span>
     {#if onSessionClick}
       <button class="sname clickable" onclick={(e) => { e.stopPropagation(); onSessionClick(); }} title="Click to change session">{session}</button>
     {:else}
@@ -223,7 +243,9 @@
     font-size: 11px;
     flex-shrink: 0;
     font-family: 'DM Sans', sans-serif;
+    cursor: grab;
   }
+  .pane-hdr:active { cursor: grabbing; }
 
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .dot.claude { background: #3d8bfd; box-shadow: 0 0 6px #3d8bfd; }

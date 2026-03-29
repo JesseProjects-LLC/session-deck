@@ -13,10 +13,12 @@
     onZoom = () => {},
     onSplit = () => {},
     onClose = () => {},
+    onDrop = () => {},
   } = $props();
 
   let resizing = $state(false);
   let containerEl = $state(null);
+  let dropZone = $state(null); // 'left' | 'right' | 'top' | 'bottom' | null
 
   function startResize(index, event) {
     event.preventDefault();
@@ -62,6 +64,42 @@
   function handleSessionClick(session) {
     onSessionPick(path, session);
   }
+
+  function getDropZone(e, el) {
+    const rect = el.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    // Determine quadrant — edges win over center
+    if (x < 0.25) return 'left';
+    if (x > 0.75) return 'right';
+    if (y < 0.35) return 'top';
+    if (y > 0.65) return 'bottom';
+    // Center area — use closest edge
+    const dists = { left: x, right: 1 - x, top: y, bottom: 1 - y };
+    return Object.entries(dists).sort((a, b) => a[1] - b[1])[0][0];
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const sourceSession = e.dataTransfer.types.includes('text/plain') ? true : false;
+    if (sourceSession) {
+      dropZone = getDropZone(e, e.currentTarget);
+    }
+  }
+
+  function handleDragLeave() {
+    dropZone = null;
+  }
+
+  function handleDropOnPane(e) {
+    e.preventDefault();
+    const sourceSession = e.dataTransfer.getData('text/plain');
+    if (sourceSession && dropZone && sourceSession !== node.session) {
+      onDrop(sourceSession, node.session, dropZone);
+    }
+    dropZone = null;
+  }
 </script>
 
 {#if node.session}
@@ -71,7 +109,13 @@
     role="group"
     style="flex: {node.size || 1}"
     onclick={() => onFocus(nodeId(node))}
+    ondragover={handleDragOver}
+    ondragleave={handleDragLeave}
+    ondrop={handleDropOnPane}
   >
+    {#if dropZone}
+      <div class="drop-indicator {dropZone}"></div>
+    {/if}
     <Terminal
       session={node.session}
       host={node.host || 'reliant'}
@@ -81,6 +125,7 @@
       onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
       onSplit={(dir) => onSplit(path, dir)}
       onClose={() => onClose(path)}
+      onDragStart={() => {}}
     />
   </div>
 {:else if node.split && node.children}
@@ -102,6 +147,7 @@
         {onZoom}
         {onSplit}
         {onClose}
+        {onDrop}
       />
       {#if i < node.children.length - 1}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -117,7 +163,7 @@
 {/if}
 
 <style>
-  .pane-leaf { min-width: 0; min-height: 0; overflow: hidden; }
+  .pane-leaf { min-width: 0; min-height: 0; overflow: hidden; position: relative; }
   .split-container {
     display: flex; min-width: 0; min-height: 0;
     overflow: hidden; width: 100%; height: 100%;
@@ -133,4 +179,17 @@
   }
   .resize-h { width: 5px; cursor: col-resize; margin: 0 -1px; }
   .resize-v { height: 5px; cursor: row-resize; margin: -1px 0; }
+
+  /* Drop zone indicators */
+  .drop-indicator {
+    position: absolute; z-index: 100; pointer-events: none;
+    background: rgba(61, 139, 253, 0.15);
+    border: 2px solid rgba(61, 139, 253, 0.6);
+    border-radius: 4px;
+    transition: all 0.1s ease;
+  }
+  .drop-indicator.left { top: 4px; left: 4px; bottom: 4px; width: 45%; }
+  .drop-indicator.right { top: 4px; right: 4px; bottom: 4px; width: 45%; }
+  .drop-indicator.top { top: 4px; left: 4px; right: 4px; height: 45%; }
+  .drop-indicator.bottom { bottom: 4px; left: 4px; right: 4px; height: 45%; }
 </style>
