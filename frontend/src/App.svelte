@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
   import Terminal from './lib/Terminal.svelte';
-  import { countPanes, presets, leaf } from './lib/stores/layout.js';
+  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
@@ -76,16 +76,50 @@
     return 'Terminal';
   }
 
-  async function init() {
+  let refreshTimer;
+
+  async function loadSessions() {
     try {
-      const res = await fetch('/api/sessions/reliant');
-      const data = await res.json();
-      sessions = data.sessions || [];
+      // Load local sessions first (fast), then remote hosts in background
+      const localRes = await fetch('/api/sessions/reliant');
+      const localData = await localRes.json();
+      sessions = (localData.sessions || []).map(s => ({ ...s, host: 'reliant' }));
+
+      // Then fetch all hosts (including remote) in background
+      const hostsRes = await fetch('/api/hosts');
+      const hostsData = await hostsRes.json();
+      const remoteHosts = (hostsData.hosts || []).filter(h => !h.isLocal);
+
+      if (remoteHosts.length > 0) {
+        Promise.allSettled(
+          remoteHosts.map(async (h) => {
+            try {
+              const res = await fetch(`/api/sessions/${h.name}`);
+              if (!res.ok) return [];
+              const data = await res.json();
+              return (data.sessions || []).map(s => ({ ...s, host: h.name }));
+            } catch { return []; }
+          })
+        ).then(results => {
+          const remoteSessions = results
+            .filter(r => r.status === 'fulfilled')
+            .flatMap(r => r.value);
+          if (remoteSessions.length > 0) {
+            sessions = [...sessions, ...remoteSessions];
+          }
+        });
+      }
     } catch (e) {
       console.error('Failed to load sessions:', e);
     }
+  }
+
+  async function init() {
+    await loadSessions();
     await loadWorkspaces();
     loading = false;
+    // Auto-refresh sessions every 30s
+    refreshTimer = setInterval(loadSessions, 30000);
   }
 
   function switchWorkspace(id) {
@@ -111,13 +145,53 @@
     if (activeId && activeLayout) updateLayout(activeId, activeLayout);
   }
 
+  function handleSplitPane(path, direction) {
+    if (!activeLayout || !activeId) return;
+    // Pick the first unassigned session, or default to 'main'
+    const usedSessions = getSessionNames(activeLayout);
+    const availableSession = sessions.find(s => !usedSessions.includes(s.name))?.name || 'main';
+    const newLayout = splitPaneAt(activeLayout, path, direction, availableSession, 'reliant');
+    if (newLayout) {
+      activeLayout = newLayout;
+      // Force re-render
+      const tmp = activeId;
+      activeId = null;
+      setTimeout(() => {
+        activeId = tmp;
+        updateLayout(tmp, newLayout);
+      }, 50);
+      toast(`Split pane ${direction === 'h' ? 'horizontally' : 'vertically'}`, 'info');
+    }
+  }
+
+  function handleClosePane(path) {
+    if (!activeLayout || !activeId) return;
+    if (countPanes(activeLayout) <= 1) {
+      toast("Can't close the last pane", 'error');
+      return;
+    }
+    const newLayout = removePane(activeLayout, path);
+    if (newLayout) {
+      activeLayout = newLayout;
+      focusedId = null;
+      zoomedPane = null;
+      const tmp = activeId;
+      activeId = null;
+      setTimeout(() => {
+        activeId = tmp;
+        updateLayout(tmp, newLayout);
+      }, 50);
+      toast('Pane closed', 'info');
+    }
+  }
+
   function openSessionPicker(path, currentSession) {
     showSessionPicker = { path, currentSession };
   }
 
   function assignSession(session) {
     if (showSessionPicker && activeId) {
-      updatePaneSession(activeId, showSessionPicker.path, session.name, 'reliant');
+      updatePaneSession(activeId, showSessionPicker.path, session.name, session.host || 'reliant');
       showSessionPicker = null;
       const tmp = activeId;
       activeId = null;
@@ -257,6 +331,7 @@
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
+    clearInterval(refreshTimer);
   });
 
   $effect(() => { init(); });
@@ -322,6 +397,8 @@
             onLayoutChange={handleLayoutChange}
             onSessionPick={openSessionPicker}
             onZoom={handleZoom}
+            onSplit={handleSplitPane}
+            onClose={handleClosePane}
           />
         {/key}
       {:else}
@@ -430,7 +507,7 @@
             >
               <span class="dot {typeClass(s.type)}"></span>
               <span class="picker-name">{s.name}</span>
-              <span class="picker-host">reliant</span>
+              <span class="picker-host">{s.host || 'reliant'}</span>
               {#if s.name === showSessionPicker.currentSession}
                 <span class="picker-current">current</span>
               {/if}

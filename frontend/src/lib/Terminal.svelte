@@ -4,7 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null } = $props();
 
   let containerEl;
   let term;
@@ -190,10 +190,10 @@
     {/if}
     <span class="tbadge {typeClass(session)}">{typeLabel(session)}</span>
     <div class="pane-actions">
-      <button class="pane-act" title="Split horizontal">⊟</button>
-      <button class="pane-act" title="Split vertical">⊞</button>
+      <button class="pane-act" title="Split horizontal" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>⊟</button>
+      <button class="pane-act" title="Split vertical" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>⊞</button>
       <button class="pane-act" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>{zoomed ? '⤡' : '⤢'}</button>
-      <button class="pane-act" title="Close">✕</button>
+      <button class="pane-act close-act" title="Close pane" onclick={(e) => { e.stopPropagation(); onClose?.(); }}>✕</button>
     </div>
   </div>
   <div class="term-container" bind:this={containerEl}></div>
@@ -261,6 +261,7 @@
     display: flex; align-items: center; justify-content: center; font-size: 11px;
   }
   .pane-act:hover { background: #1c2333; color: #c5cdd9; }
+  .pane-act.close-act:hover { background: rgba(240,113,120,0.15); color: #f07178; }
 
   .term-container {
     flex: 1;

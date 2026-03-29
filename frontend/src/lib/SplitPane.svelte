@@ -11,6 +11,8 @@
     onLayoutChange = () => {},
     onSessionPick = () => {},
     onZoom = () => {},
+    onSplit = () => {},
+    onClose = () => {},
   } = $props();
 
   let resizing = $state(false);
@@ -77,6 +79,8 @@
       zoomed={zoomedId === nodeId(node)}
       onSessionClick={() => handleSessionClick(node.session)}
       onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
+      onSplit={(dir) => onSplit(path, dir)}
+      onClose={() => onClose(path)}
     />
   </div>
 {:else if node.split && node.children}
@@ -96,6 +100,8 @@
         {onLayoutChange}
         {onSessionPick}
         {onZoom}
+        {onSplit}
+        {onClose}
       />
       {#if i < node.children.length - 1}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
