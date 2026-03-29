@@ -11,6 +11,9 @@
   let fitAddon;
   let ws;
   let reconnectTimer;
+  let resizeTimer;
+  let lastCols = 0;
+  let lastRows = 0;
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
@@ -44,6 +47,9 @@
       connected = true;
       connecting = false;
       error = null;
+      // Record initial dimensions to avoid spurious resize on first output
+      lastCols = term.cols;
+      lastRows = term.rows;
     };
 
     ws.onmessage = (event) => {
@@ -69,6 +75,7 @@
 
   function disconnect() {
     clearTimeout(reconnectTimer);
+    clearTimeout(resizeTimer);
     if (ws) {
       ws.onclose = null; // Prevent reconnect on intentional close
       ws.close(1000, 'Client disconnect');
@@ -79,9 +86,14 @@
   }
 
   function sendResize() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    }
+    if (!ws || ws.readyState !== WebSocket.OPEN || !term) return;
+    const cols = term.cols;
+    const rows = term.rows;
+    // Only send if dimensions actually changed
+    if (cols === lastCols && rows === lastRows) return;
+    lastCols = cols;
+    lastRows = rows;
+    ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   }
 
   onMount(() => {
@@ -129,12 +141,14 @@
       }
     });
 
-    // Resize observer
+    // Resize observer — debounced to prevent resize/redraw loops
     const resizeObserver = new ResizeObserver(() => {
-      if (fitAddon && containerEl.offsetWidth > 0) {
+      if (!fitAddon || containerEl.offsetWidth <= 0) return;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
         fitAddon.fit();
         sendResize();
-      }
+      }, 150);
     });
     resizeObserver.observe(containerEl);
 

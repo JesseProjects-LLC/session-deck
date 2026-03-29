@@ -58,17 +58,30 @@ export function spawnTerminal(sessionName, hostName, options = {}) {
 }
 
 /**
- * Resize an active PTY.
+ * Resize an active PTY. Debounced per-terminal to prevent redraw storms.
  */
+const resizeTimers = new Map();
 export function resizeTerminal(id, cols, rows) {
   const entry = activePTYs.get(id);
-  if (entry) {
+  if (!entry) return;
+
+  // Skip if dimensions haven't changed
+  if (entry.lastCols === cols && entry.lastRows === rows) return;
+
+  // Debounce: wait 100ms for resize to settle
+  clearTimeout(resizeTimers.get(id));
+  resizeTimers.set(id, setTimeout(() => {
+    resizeTimers.delete(id);
+    const e = activePTYs.get(id);
+    if (!e) return;
     try {
-      entry.term.resize(cols, rows);
+      e.term.resize(cols, rows);
+      e.lastCols = cols;
+      e.lastRows = rows;
     } catch {
       // PTY may already be closed
     }
-  }
+  }, 100));
 }
 
 /**
@@ -84,6 +97,9 @@ export function killTerminal(id) {
     }
     activePTYs.delete(id);
   }
+  // Clean up any pending resize timer
+  clearTimeout(resizeTimers.get(id));
+  resizeTimers.delete(id);
 }
 
 /**
