@@ -56,6 +56,15 @@
   let settingsSessionTab = $state('list'); // 'list' | 'create'
   let settingsSessionHostFilter = $state(null); // null = all, or host name
 
+  // Setup wizard (first-run)
+  let showSetupWizard = $state(false);
+  let setupStep = $state(1); // 1: welcome/import, 2: test hosts, 3: create workspace
+  let setupImporting = $state(false);
+  let setupTesting = $state(false);
+  let setupTestResults = $state([]); // { name, status, tmuxAvailable, error }
+  let setupWsName = $state('Default');
+  let setupWsPreset = $state('quad');
+
   // Toast notifications
   let toasts = $state([]);
   let toastId = 0;
@@ -148,6 +157,17 @@
     await loadSessions();
     await loadWorkspaces();
     loading = false;
+
+    // Detect first-run: no workspaces = show setup wizard
+    if (workspaces.length === 0) {
+      const hostRes = await fetch('/api/managed-hosts/count');
+      const { count } = await hostRes.json();
+      if (count === 0) {
+        showSetupWizard = true;
+        setupStep = 1;
+      }
+    }
+
     // Auto-refresh sessions every 30s
     refreshTimer = setInterval(loadSessions, 30000);
   }
@@ -550,6 +570,62 @@
     } finally {
       sessionMgrLoading = false;
     }
+  }
+
+  // --- Setup wizard ---
+
+  async function setupImportHosts() {
+    setupImporting = true;
+    try {
+      const res = await fetch('/api/managed-hosts/import-ssh-config', { method: 'POST' });
+      const data = await res.json();
+      await loadManagedHosts();
+      await loadSessions();
+      if (data.imported > 0) {
+        toast(`Imported ${data.imported} hosts from SSH config`, 'success');
+        setupStep = 2;
+      } else {
+        toast('No hosts found in SSH config. Add hosts manually.', 'info');
+      }
+    } catch (e) {
+      toast('Failed to import: ' + e.message, 'error');
+    } finally {
+      setupImporting = false;
+    }
+  }
+
+  async function setupTestAllHosts() {
+    setupTesting = true;
+    setupTestResults = [];
+    try {
+      const res = await fetch('/api/managed-hosts/test-all', { method: 'POST' });
+      const data = await res.json();
+      setupTestResults = data.results || [];
+      await loadManagedHosts();
+      await loadSessions();
+    } catch (e) {
+      toast('Test failed: ' + e.message, 'error');
+    } finally {
+      setupTesting = false;
+    }
+  }
+
+  async function setupCreateWorkspace() {
+    if (!setupWsName.trim()) return;
+    const sessionNames = sessions.map(s => s.name);
+    const layouts = presets(sessionNames.length ? sessionNames : ['main']);
+    const layout = layouts[setupWsPreset] || layouts.quad;
+    try {
+      await createWorkspace(setupWsName.trim(), layout);
+      toast(`Created workspace "${setupWsName.trim()}"`, 'success');
+      showSetupWizard = false;
+    } catch (e) {
+      toast(e.message || 'Failed to create workspace', 'error');
+    }
+  }
+
+  function setupSkip() {
+    showSetupWizard = false;
   }
 
   async function testAllHosts() {
@@ -1576,6 +1652,130 @@
     </div>
   {/if}
 
+  <!-- Setup wizard (first-run) -->
+  {#if showSetupWizard}
+    <div class="setup-overlay">
+      <div class="setup-wizard">
+        <!-- Step indicator -->
+        <div class="setup-steps">
+          <span class="setup-step" class:active={setupStep === 1} class:done={setupStep > 1}>1</span>
+          <span class="setup-step-line" class:done={setupStep > 1}></span>
+          <span class="setup-step" class:active={setupStep === 2} class:done={setupStep > 2}>2</span>
+          <span class="setup-step-line" class:done={setupStep > 2}></span>
+          <span class="setup-step" class:active={setupStep === 3}>3</span>
+        </div>
+
+        {#if setupStep === 1}
+          <div class="setup-content">
+            <h2 class="setup-title">Welcome to Session Deck</h2>
+            <p class="setup-desc">Let's set up your terminal workspace. First, we'll import your SSH hosts so Session Deck knows which machines to connect to.</p>
+            <p class="setup-hint">Session Deck will read your <code>~/.ssh/config</code> file to find configured hosts.</p>
+            <div class="setup-actions">
+              <button class="action-btn" onclick={setupImportHosts} disabled={setupImporting}>
+                {setupImporting ? 'Importing...' : 'Import from SSH Config'}
+              </button>
+              <button class="setup-link" onclick={() => { showSetupWizard = false; openSettingsSection('servers'); }}>
+                Add hosts manually instead
+              </button>
+            </div>
+            <button class="setup-skip" onclick={setupSkip}>Skip setup</button>
+          </div>
+
+        {:else if setupStep === 2}
+          <div class="setup-content">
+            <h2 class="setup-title">Test Your Hosts</h2>
+            <p class="setup-desc">
+              {managedHosts.length} hosts imported. Let's test which ones are reachable and have tmux installed.
+            </p>
+
+            {#if setupTestResults.length > 0}
+              <div class="setup-results">
+                {#each setupTestResults as r}
+                  <div class="setup-result-row">
+                    <span class="setup-result-name">{r.name}</span>
+                    {#if r.status === 'ok'}
+                      <span class="host-badge ok-badge">reachable</span>
+                      {#if r.tmuxAvailable}
+                        <span class="host-badge tmux-badge">tmux</span>
+                      {:else}
+                        <span class="host-badge no-tmux-badge">no tmux</span>
+                      {/if}
+                    {:else}
+                      <span class="host-badge error-badge">{r.error || 'unreachable'}</span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+              {@const reachable = setupTestResults.filter(r => r.status === 'ok').length}
+              {@const withTmux = setupTestResults.filter(r => r.tmuxAvailable).length}
+              <p class="setup-summary">
+                {reachable} of {setupTestResults.length} reachable, {withTmux} with tmux.
+                {#if withTmux === 0}
+                  <span class="setup-warn">No hosts have tmux. You'll need to install it before connecting.</span>
+                {/if}
+              </p>
+            {/if}
+
+            <div class="setup-actions">
+              {#if setupTestResults.length === 0}
+                <button class="action-btn" onclick={setupTestAllHosts} disabled={setupTesting}>
+                  {setupTesting ? 'Testing...' : 'Test All Hosts'}
+                </button>
+              {:else}
+                <button class="action-btn" onclick={() => setupStep = 3}>
+                  Continue
+                </button>
+                <button class="setup-link" onclick={setupTestAllHosts} disabled={setupTesting}>
+                  {setupTesting ? 'Re-testing...' : 'Re-test'}
+                </button>
+              {/if}
+            </div>
+            <button class="setup-skip" onclick={() => setupStep = 3}>Skip testing</button>
+          </div>
+
+        {:else if setupStep === 3}
+          <div class="setup-content">
+            <h2 class="setup-title">Create Your First Workspace</h2>
+            <p class="setup-desc">
+              A workspace is a layout of terminal panes. Pick a preset to get started — you can customize it later.
+            </p>
+            <label class="host-field">
+              <span class="host-field-label">Workspace Name</span>
+              <input class="field-input" type="text" bind:value={setupWsName} placeholder="Default" />
+            </label>
+            <label class="host-field">
+              <span class="host-field-label">Layout Preset</span>
+              <div class="setup-presets">
+                {#each [
+                  { id: 'dual', label: 'Dual', desc: '2 panes side by side' },
+                  { id: 'claude-focus', label: 'Focus', desc: '1 large + 1 small' },
+                  { id: 'quad', label: 'Quad', desc: '4 equal panes' },
+                  { id: 'infra', label: 'Infra', desc: '1 large + 3 small' },
+                  { id: 'deck', label: 'Deck', desc: '6 panes (3×2)' },
+                  { id: 'mixed', label: 'Mixed', desc: '2 large + 3 small' },
+                ] as p}
+                  <button
+                    class="setup-preset"
+                    class:active={setupWsPreset === p.id}
+                    onclick={() => setupWsPreset = p.id}
+                  >
+                    <span class="setup-preset-label">{p.label}</span>
+                    <span class="setup-preset-desc">{p.desc}</span>
+                  </button>
+                {/each}
+              </div>
+            </label>
+            <div class="setup-actions">
+              <button class="action-btn" onclick={setupCreateWorkspace} disabled={!setupWsName.trim()}>
+                Create Workspace
+              </button>
+            </div>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
   <!-- Toast notifications -->
   <div class="toast-container">
     {#each toasts as t (t.id)}
@@ -2289,4 +2489,98 @@
   .session-host-tab:hover { color: #c5cdd9; }
   .session-host-tab.active { color: #3d8bfd; background: rgba(61,139,253,0.08); border-color: rgba(61,139,253,0.2); }
   .session-host-cnt { font-size: 9px; color: #3d4450; }
+
+  /* Setup wizard */
+  .setup-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10,14,20,0.95); backdrop-filter: blur(8px);
+    z-index: 5000; display: flex; align-items: center; justify-content: center;
+  }
+  .setup-wizard {
+    width: 480px; max-width: 90vw; max-height: 90vh;
+    background: #151b23; border: 1px solid #1e2530; border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    padding: 32px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .setup-steps {
+    display: flex; align-items: center; justify-content: center; gap: 0;
+  }
+  .setup-step {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid #2a3345; background: transparent;
+    color: #3d4450; font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+  }
+  .setup-step.active { border-color: #3d8bfd; color: #3d8bfd; background: rgba(61,139,253,0.1); }
+  .setup-step.done { border-color: #7fd962; color: #7fd962; background: rgba(127,217,98,0.1); }
+  .setup-step-line { width: 40px; height: 2px; background: #2a3345; }
+  .setup-step-line.done { background: #7fd962; }
+
+  .setup-content { display: flex; flex-direction: column; gap: 16px; }
+  .setup-title {
+    font-size: 20px; font-weight: 700; color: #c5cdd9; margin: 0;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .setup-desc { font-size: 13px; color: #6b7688; line-height: 1.6; margin: 0; }
+  .setup-hint {
+    font-size: 11px; color: #3d4450; margin: 0;
+    padding: 8px 12px; background: rgba(61,139,253,0.05);
+    border: 1px solid rgba(61,139,253,0.1); border-radius: 6px;
+  }
+  .setup-hint code {
+    font-family: 'JetBrains Mono', monospace; color: #6b7688;
+    background: #0a0e14; padding: 1px 4px; border-radius: 2px; font-size: 11px;
+  }
+  .setup-actions {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .setup-link {
+    background: none; border: none; color: #3d8bfd; font-size: 12px;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    padding: 4px 8px; border-radius: 4px; transition: background 0.1s;
+  }
+  .setup-link:hover { background: rgba(61,139,253,0.1); }
+  .setup-link:disabled { opacity: 0.5; cursor: not-allowed; }
+  .setup-skip {
+    background: none; border: none; color: #3d4450; font-size: 11px;
+    cursor: pointer; align-self: center; padding: 4px;
+  }
+  .setup-skip:hover { color: #6b7688; }
+
+  .setup-results {
+    display: flex; flex-direction: column; gap: 4px;
+    max-height: 200px; overflow-y: auto;
+    padding: 8px; background: #0b0e14; border-radius: 6px;
+    border: 1px solid #1e2530;
+  }
+  .setup-result-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 4px; font-size: 12px;
+  }
+  .setup-result-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: #c5cdd9; min-width: 100px;
+  }
+  .setup-summary { font-size: 12px; color: #6b7688; margin: 0; }
+  .setup-warn { color: #ffcb6b; }
+
+  .setup-presets {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .setup-preset {
+    padding: 10px 12px; border-radius: 6px; border: 1px solid #1e2530;
+    background: transparent; cursor: pointer; text-align: left;
+    display: flex; flex-direction: column; gap: 2px;
+    transition: all 0.12s;
+  }
+  .setup-preset:hover { border-color: #3d8bfd; }
+  .setup-preset.active { border-color: #3d8bfd; background: rgba(61,139,253,0.08); }
+  .setup-preset-label {
+    font-size: 12px; font-weight: 600; color: #c5cdd9;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .setup-preset-desc { font-size: 10px; color: #3d4450; }
 </style>
