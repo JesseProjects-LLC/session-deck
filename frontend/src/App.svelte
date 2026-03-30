@@ -48,7 +48,8 @@
   function toast(message, type = 'info') {
     const id = ++toastId;
     toasts = [...toasts, { id, message, type }];
-    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, 3000);
+    const duration = type === 'error' ? 8000 : 3000;
+    setTimeout(() => { toasts = toasts.filter(t => t.id !== id); }, duration);
   }
 
   subscribe(({ workspaces: ws, activeId: id }) => {
@@ -743,6 +744,11 @@
         </div>
 
         {#if sessionMgrTab === 'list'}
+          <div class="mgr-legend">
+            <span class="mgr-legend-item"><span class="dot claude"></span> Claude Code</span>
+            <span class="mgr-legend-item"><span class="dot gsd"></span> GSD / Auto</span>
+            <span class="mgr-legend-item"><span class="dot terminal"></span> Terminal</span>
+          </div>
           <div class="picker-body">
             {#each sessionsByHost() as [hostName, hostSessions]}
               <div class="mgr-host-group">
@@ -1226,6 +1232,12 @@
   /* Session manager */
   .session-mgr { width: 500px; max-height: 600px; }
   .mgr-tabs { display: flex; gap: 2px; margin-left: auto; }
+
+  .mgr-legend {
+    display: flex; gap: 16px; padding: 6px 12px;
+    border-bottom: 1px solid #1e2530; font-size: 10px; color: #6b7688;
+  }
+  .mgr-legend-item { display: flex; align-items: center; gap: 5px; }
   .mgr-tab {
     padding: 3px 10px; border-radius: 4px; border: 1px solid transparent;
     background: transparent; color: #6b7688; font-size: 11px; cursor: pointer;

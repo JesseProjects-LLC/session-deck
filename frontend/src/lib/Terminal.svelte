@@ -3,6 +3,7 @@
   import { Terminal } from '@xterm/xterm';
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
+  import { ClipboardAddon } from '@xterm/addon-clipboard';
 
   let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
@@ -117,6 +118,7 @@
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
       lineHeight: 1.2,
+      rightClickSelectsWord: true,
       theme: {
         background: '#0b0e11',
         foreground: '#c5cdd9',
@@ -144,9 +146,33 @@
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
+    term.loadAddon(new ClipboardAddon());
 
     term.open(containerEl);
     fitAddon.fit();
+
+    // Clipboard handling
+    term.attachCustomKeyEventHandler((ev) => {
+      // Ctrl+C — copy if text is selected, otherwise send SIGINT to terminal
+      if (ev.ctrlKey && !ev.shiftKey && ev.key === 'c' && ev.type === 'keydown') {
+        if (term.hasSelection()) {
+          navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+          term.clearSelection();
+          return false; // prevent terminal from getting Ctrl+C
+        }
+        return true; // no selection — let SIGINT through
+      }
+      // Ctrl+V — paste from clipboard
+      if (ev.ctrlKey && !ev.shiftKey && ev.key === 'v' && ev.type === 'keydown') {
+        navigator.clipboard.readText().then(text => {
+          if (text && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('\x1b[200~' + text + '\x1b[201~');
+          }
+        }).catch(() => {});
+        return false;
+      }
+      return true;
+    });
 
     // Terminal input → WebSocket
     term.onData((data) => {

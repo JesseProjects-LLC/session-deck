@@ -141,6 +141,22 @@ function classifyError(err) {
   return 'error';
 }
 
+/** Produce a clean user-facing error from a raw SSH/tmux error. */
+function cleanError(err) {
+  const msg = (err.message || '') + (err.stderr || '');
+  if (msg.includes('command not found')) return 'tmux is not installed on this host';
+  if (msg.includes('no server running') || msg.includes('No such file or directory')) return 'tmux is not running on this host';
+  if (msg.includes('ETIMEDOUT') || msg.includes('timed out') || msg.includes('Connection timed out')) return 'host is unreachable (connection timed out)';
+  if (msg.includes('Connection refused')) return 'connection refused';
+  if (msg.includes('No route to host')) return 'host is unreachable (no route)';
+  if (msg.includes('Permission denied')) return 'SSH authentication failed';
+  if (msg.includes('duplicate session')) return 'session already exists';
+  if (msg.includes('no such session') || msg.includes("can't find session")) return 'session not found';
+  // Strip "Command failed: ssh ..." prefix if present
+  const clean = (err.stderr || err.message || 'unknown error').replace(/^Command failed:.*?\n?/, '').trim();
+  return clean || 'unknown error';
+}
+
 function result(hostName, status, sessions, startMs, error) {
   return {
     host: hostName,
@@ -196,7 +212,7 @@ export async function createSession(host, name, startDir) {
     if (err.stderr?.includes('duplicate session') || err.message?.includes('duplicate session')) {
       throw Object.assign(new Error(`Session "${name}" already exists on ${host.name}`), { statusCode: 409 });
     }
-    throw Object.assign(new Error(`Failed to create session on ${host.name}: ${err.message}`), { statusCode: 500 });
+    throw Object.assign(new Error(`Failed to create session on ${host.name}: ${cleanError(err)}`), { statusCode: 500 });
   }
 }
 
@@ -221,7 +237,7 @@ export async function renameSession(host, oldName, newName) {
     if (err.stderr?.includes('no such session') || err.message?.includes("can't find session")) {
       throw Object.assign(new Error(`Session "${oldName}" not found on ${host.name}`), { statusCode: 404 });
     }
-    throw Object.assign(new Error(`Failed to rename session on ${host.name}: ${err.message}`), { statusCode: 500 });
+    throw Object.assign(new Error(`Failed to rename session on ${host.name}: ${cleanError(err)}`), { statusCode: 500 });
   }
 }
 
@@ -243,6 +259,6 @@ export async function deleteSession(host, name) {
     if (err.stderr?.includes('no such session') || err.message?.includes("can't find session")) {
       throw Object.assign(new Error(`Session "${name}" not found on ${host.name}`), { statusCode: 404 });
     }
-    throw Object.assign(new Error(`Failed to delete session on ${host.name}: ${err.message}`), { statusCode: 500 });
+    throw Object.assign(new Error(`Failed to delete session on ${host.name}: ${cleanError(err)}`), { statusCode: 500 });
   }
 }
