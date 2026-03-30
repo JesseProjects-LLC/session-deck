@@ -5,9 +5,23 @@ A web-based tmux workspace manager with live terminal panes. View and manage you
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-green)
 
+![Session Deck — 6-pane workspace with live terminals](docs/screenshots/hero.png)
+
 ## What It Does
 
 Session Deck gives you a browser-based dashboard for your tmux sessions. Each pane is a live terminal connected to a real tmux session — you can type, run commands, and see output in real time. Organize panes into workspaces with drag-and-drop layouts.
+
+### Workspace Switching
+![Workspace switching](docs/screenshots/workspace-switching.gif)
+
+### Drag & Drop + Resize
+![Drag and drop pane rearrangement](docs/screenshots/drag-drop.gif)
+
+### Split Panes
+![Splitting panes](docs/screenshots/split-panes.gif)
+
+### 12-Pane Grid (4×3)
+![12-pane workspace](docs/screenshots/hero-4x3.png)
 
 **Key features:**
 - 🖥️ Live terminal panes via xterm.js connected to tmux sessions over WebSocket
@@ -247,10 +261,22 @@ Select text with the mouse in any terminal pane, then:
 ### Settings Menu
 
 Click the **SESSION DECK** logo in the top-left to access:
+
+![Settings menu](docs/screenshots/settings-menu.png)
+
 - **Servers** — Add, edit, remove, and test SSH hosts
+  ![Server management](docs/screenshots/servers.png)
 - **Sessions** — Create, rename, and kill tmux sessions (with per-host filtering)
-- **Appearance** — Session type color reference
+  ![Session management](docs/screenshots/sessions.png)
+- **Appearance** — Accent color picker and session type colors
+  ![Appearance settings](docs/screenshots/appearance.png)
 - **Help** — Keyboard shortcuts and documentation
+
+### Command Palette
+
+Press `Ctrl+K` to open the command palette — fuzzy search across all actions:
+
+![Command palette](docs/screenshots/command-palette.png)
 
 ## Architecture
 
