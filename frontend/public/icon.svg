@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- Row 1 -->
+  <!-- Cell 1: > (full opacity, active session) -->
+  <rect x="0" y="0" width="44" height="44" rx="8" ry="8" fill="#F97316"/>
+  <text x="14" y="31" font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="20" font-weight="700" fill="#FFFFFF">&gt;</text>
+
+  <!-- Cell 2: $ (bash) -->
+  <rect x="52" y="0" width="44" height="44" rx="8" ry="8" fill="#F97316" opacity="0.75"/>
+  <text x="16" y="31" font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="20" font-weight="700" fill="#FFFFFF" opacity="0.75" transform="translate(52, 0)">$</text>
+
+  <!-- Row 2 -->
+  <!-- Cell 3: # (root) -->
+  <rect x="0" y="52" width="44" height="44" rx="8" ry="8" fill="#F97316" opacity="0.6"/>
+  <text x="14" y="83" font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="20" font-weight="700" fill="#FFFFFF" opacity="0.6">#</text>
+
+  <!-- Cell 4: % (csh/tcsh) -->
+  <rect x="52" y="52" width="44" height="44" rx="8" ry="8" fill="#F97316" opacity="0.65"/>
+  <text x="14" y="83" font-family="'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" font-size="20" font-weight="700" fill="#FFFFFF" opacity="0.65" transform="translate(52, 0)">%</text>
+</svg>
