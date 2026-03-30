@@ -1,0 +1,32 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Session Deck//Launch Plan//EN
+BEGIN:VEVENT
+DTSTART:20260331T090000
+DTEND:20260331T100000
+SUMMARY:Session Deck Launch: LinkedIn + Twitter + r/SideProject + r/commandline
+DESCRIPTION:Post Session Deck to:\n- LinkedIn (personal post)\n- X/Twitter (thread)\n- r/SideProject\n- r/commandline\n\nDrafts in docs/launch-posts.md\nGitHub: https://github.com/JesseProjects-LLC/session-deck
+LOCATION:Online
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260402T090000
+DTEND:20260402T120000
+SUMMARY:Session Deck: Show HN (hand-written post!)
+DESCRIPTION:Post Show HN to Hacker News.\n\n⚠️ MUST BE HAND-WRITTEN — no AI text.\n\nTitle: Show HN: Session Deck – Web-based tmux workspace manager with live terminals\nURL: https://github.com/JesseProjects-LLC/session-deck\n\nAdd follow-up comment with your personal backstory.\nBe ready to engage with comments for 2-3 hours.\n\nSee docs/launch-posts.md for talking points (rewrite in your own words).
+LOCATION:https://news.ycombinator.com/submit
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260404T090000
+DTEND:20260404T100000
+SUMMARY:Session Deck: r/selfhosted + r/homelab (Friday posts)
+DESCRIPTION:Post Session Deck to:\n- r/selfhosted (check if Friday self-promo rule applies)\n- r/homelab\n\nThese are your BEST audiences.\nInclude hero-4x3 screenshot (12-pane layout).\n\nDrafts in docs/launch-posts.md
+LOCATION:Online
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260407T090000
+DTEND:20260407T100000
+SUMMARY:Session Deck: r/linux + awesome-selfhosted PR
+DESCRIPTION:Post to r/linux.\nSubmit PR to awesome-selfhosted GitHub list:\nhttps://github.com/awesome-selfhosted/awesome-selfhosted\n\nAdd under: Software Development > IDE / Tools\nor: Remote Access
+LOCATION:Online
+END:VEVENT
+END:VCALENDAR
