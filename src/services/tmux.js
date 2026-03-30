@@ -7,6 +7,7 @@ const execFileAsync = promisify(execFile);
 
 const SESSION_FORMAT = '#{session_name}|#{session_windows}|#{session_attached}|#{session_created}';
 const PANE_FORMAT = '#{pane_current_command}';
+const PANE_PATH_FORMAT = '#{pane_current_path}';
 
 const TYPE_MAP = {
   claude: 'claude-code',
@@ -59,6 +60,7 @@ export async function listSessions(host, options = {}) {
       if (!name) continue;
 
       const type = await detectType(host, name, timeout);
+      const context = await detectContext(host, name, timeout);
 
       sessions.push({
         name,
@@ -67,6 +69,8 @@ export async function listSessions(host, options = {}) {
         attachedCount: parseInt(attached, 10),
         created: parseInt(created, 10) * 1000, // epoch ms
         type,
+        workingDir: context.workingDir,
+        repoName: context.repoName,
       });
     }
 
@@ -121,6 +125,49 @@ async function detectType(host, sessionName, timeout) {
   } catch {
     return 'terminal'; // default if detection fails
   }
+}
+
+/**
+ * Detect working directory and git repo name for a session.
+ */
+async function detectContext(host, sessionName, timeout) {
+  const ctx = { workingDir: null, repoName: null };
+  try {
+    // Get the current path of the first pane
+    const raw = host.isLocal
+      ? await execLocal(['list-panes', '-t', sessionName, '-F', PANE_PATH_FORMAT], timeout)
+      : await execRemote(host, `tmux list-panes -t '${sessionName}' -F '${PANE_PATH_FORMAT}'`, timeout);
+
+    const panePath = raw.trim().split('\n')[0]?.trim();
+    if (!panePath) return ctx;
+
+    ctx.workingDir = panePath;
+
+    // Try to detect git repo name
+    if (host.isLocal) {
+      try {
+        const { stdout } = await execFileAsync('git', ['-C', panePath, 'rev-parse', '--show-toplevel'], { timeout: 2000 });
+        const repoRoot = stdout.trim();
+        if (repoRoot) {
+          ctx.repoName = repoRoot.split('/').pop();
+        }
+      } catch { /* not a git repo */ }
+    } else {
+      try {
+        const gitOut = await execRemote(host, `cd '${panePath}' && git rev-parse --show-toplevel 2>/dev/null`, timeout);
+        const repoRoot = gitOut.trim();
+        if (repoRoot) {
+          ctx.repoName = repoRoot.split('/').pop();
+        }
+      } catch { /* not a git repo or git not installed */ }
+    }
+
+    // If no git repo, use the directory name as a fallback context
+    if (!ctx.repoName) {
+      ctx.repoName = panePath.split('/').pop() || null;
+    }
+  } catch { /* ignore detection failures */ }
+  return ctx;
 }
 
 async function execLocal(args, timeout) {

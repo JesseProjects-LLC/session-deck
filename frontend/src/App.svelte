@@ -7,6 +7,7 @@
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
     createWorkspace, deleteWorkspace, renameWorkspace, duplicateWorkspace,
+    renameSessionInWorkspaces,
   } from './lib/stores/workspaces.js';
 
   let sessions = $state([]);
@@ -138,7 +139,8 @@
     const type = s?.type || 'bash';
     const color = typeColor(type);
     const label = (sessionTypeMap[type]?.display_name || type || 'TERM').toUpperCase().slice(0, 6);
-    return { color, label, type };
+    const context = s?.repoName || null;
+    return { color, label, type, context };
   }
 
   let refreshTimer;
@@ -893,6 +895,8 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to rename session');
       toast(`Renamed "${name}" to "${renameSessionValue.trim()}" on ${host}`, 'success');
+      // Update all workspace panes that reference the old session name
+      renameSessionInWorkspaces(name, renameSessionValue.trim(), host);
       showRenameSession = null;
       await loadSessions();
     } catch (e) {
@@ -1120,6 +1124,7 @@
             zoomed={true}
             sessionTypeColor={getTypeInfo(zoomedPane.session).color}
             sessionTypeLabel={getTypeInfo(zoomedPane.session).label}
+            sessionContext={getTypeInfo(zoomedPane.session).context}
             onZoom={() => { zoomedPane = null; }}
             onSessionClick={() => openSessionPicker([], zoomedPane.session)}
             onContextMenu={(e) => handlePaneContextMenu(e, [], zoomedPane.session, zoomedPane.host)}

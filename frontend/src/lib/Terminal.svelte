@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { ClipboardAddon } from '@xterm/addon-clipboard';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
   let containerEl;
   let term;
@@ -228,9 +228,12 @@
     }}
   >    <span class="dot" style="background:{sessionTypeColor};box-shadow:0 0 6px {sessionTypeColor}"></span>
     {#if onSessionClick}
-      <button class="sname clickable" onclick={(e) => { e.stopPropagation(); onSessionClick(); }} title="Click to change session">{session}</button>
+      <button class="sname clickable" onclick={(e) => { e.stopPropagation(); onSessionClick(); }} title="Click to change session">{paneTitle || session}</button>
     {:else}
-      <span class="sname">{session}</span>
+      <span class="sname">{paneTitle || session}</span>
+    {/if}
+    {#if sessionContext && !paneTitle}
+      <span class="ctx-name">{sessionContext}</span>
     {/if}
     <span class="hname">{host}</span>
     <span class="spacer"></span>
@@ -297,6 +300,10 @@
   .sname.clickable { cursor: pointer; border-bottom: 1px dashed #3d4450; }
   .sname.clickable:hover { color: var(--accent, #F97316); border-bottom-color: var(--accent, #F97316); }
   .hname { color: #3d4450; font-size: 10px; }
+  .ctx-name {
+    color: #3d4450; font-size: 9px; font-family: 'JetBrains Mono', monospace;
+    opacity: 0.7; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .spacer { flex: 1; }
 
   .fbadge {

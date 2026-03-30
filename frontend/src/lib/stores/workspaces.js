@@ -69,6 +69,34 @@ export async function updatePaneSession(workspaceId, path, session, host) {
   }
 }
 
+/**
+ * Rename a session across all workspaces. Finds every pane referencing
+ * oldName on the given host and updates it to newName. Persists changes.
+ */
+export function renameSessionInWorkspaces(oldName, newName, host) {
+  let changed = false;
+
+  function walkAndRename(node) {
+    if (node.session === oldName && (node.host || 'reliant') === (host || 'reliant')) {
+      node.session = newName;
+      changed = true;
+    }
+    if (node.children) {
+      for (const child of node.children) walkAndRename(child);
+    }
+  }
+
+  for (const ws of _workspaces) {
+    changed = false;
+    walkAndRename(ws.layout);
+    if (changed) {
+      debouncedSave(ws.id, ws.layout);
+    }
+  }
+
+  notify();
+}
+
 export async function createWorkspace(name, layout, description) {
   try {
     const res = await fetch('/api/workspaces', {

@@ -15,7 +15,7 @@
     onClose = () => {},
     onDrop = () => {},
     onPaneContextMenu = () => {},
-    getTypeInfo = () => ({ color: '#6b7688', label: 'TERM' }),
+    getTypeInfo = () => ({ color: '#6b7688', label: 'TERM', context: null }),
     parentSplit = null,
     siblingCount = 0,
   } = $props();
@@ -140,6 +140,7 @@
       sessionType={node.session}
       sessionTypeColor={getTypeInfo(node.session).color}
       sessionTypeLabel={getTypeInfo(node.session).label}
+      sessionContext={getTypeInfo(node.session).context}
       onSessionClick={() => handleSessionClick(node.session)}
       onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
       onSplit={(dir) => onSplit(path, dir)}
