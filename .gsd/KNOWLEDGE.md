@@ -101,3 +101,17 @@
 4. Copy/paste optimization — clean clipboard content without line-break artifacts (D008)
 5. Command palette (Ctrl+K) — quick access to all actions
 6. Mobile/responsive view for monitoring
+
+## Copy/Paste Implementation (Validated 2026-03-30)
+- xterm.js native selection handles copy correctly out of the box
+- No custom clipboard handlers needed — browser Clipboard API respects terminal selection
+- Users: mouse select → Ctrl+C (when no process captures) or right-click copy; Ctrl+V or right-click paste
+- If issues resurface: consider @xterm/addon-clipboard
+- Key insight: do NOT add custom handlers that mangle content — the default behavior is correct
+
+## Settings Menu Design (2026-03-30)
+- "SESSION DECK" logo in top-left becomes a dropdown menu for all configuration
+- Config areas: Server/Host management, Session management, Color codes, Help docs
+- Hosts should be configurable (not just parsed from SSH config) — add/remove/test connectivity
+- tmux availability detection: test if tmux is running on host, offer setup script if not
+- Auth: handle SSH key-based auth (already in place) + document setup for new hosts

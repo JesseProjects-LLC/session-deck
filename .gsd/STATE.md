@@ -9,6 +9,7 @@
 - ✅ **M001:** M001: Foundation — Server, SSH, and tmux Inventory
 - ✅ **M002:** M002: Web UI — Svelte frontend with live terminals
 - 🔄 **M003:** M003
+- ⬜ **M004:** M004
 
 ## Recent Decisions
 - None recorded

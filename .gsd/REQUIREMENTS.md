@@ -20,7 +20,7 @@
 | R016 | Keyboard shortcut: zoom/maximize a single pane (and restore) | active | Shortcut toggles pane between grid cell and full-screen | — | — |
 | R017 | Keyboard shortcut: open session management panel | active | Shortcut toggles session management overlay | — | — |
 | R018 | Save/load workspace layouts (presets) | active | Presets persist across server restarts | — | — |
-| R019 | Session management UI: create, rename, delete sessions from browser | active | UI panel for session CRUD without touching terminal | — | — |
+| R019 | Session management UI: create, rename, delete sessions from browser | validated | User tested: created, renamed, and killed a session on Reliant from the browser UI. All operations confirmed working. | M002 | — |
 | R020 | Session management UI: assign/unassign sessions to workspace panes | active | Drag or select to place sessions into grid cells | — | — |
 | R021 | Session management UI: show session inventory grouped by host | active | All sessions visible, grouped by host, with type indicators | — | — |
 | R022 | Visual indicators: session type (Claude Code, GSD, terminal) shown in UI | active | Color-coded dots or labels per session type | — | — |
@@ -32,4 +32,4 @@
 | R028 | REST + WebSocket API | active | REST for session management, WebSocket for terminal I/O | — | — |
 | R029 | Persistent storage for workspace layouts (SQLite) | active | Data survives server restart | M001/S05 | — |
 | R030 | systemd service on Reliant | active | Service starts/stops/restarts cleanly via systemctl | M001/S05 | — |
-| R031 | Clean copy/paste from terminal panes — no extra line breaks, no indentation artifacts, no visual decoration in clipboard | active | Select text in xterm.js pane, paste into external editor, output matches original terminal content exactly | — | — |
+| R031 | Clean copy/paste from terminal panes — no extra line breaks, no indentation artifacts, no visual decoration in clipboard | validated | User confirmed: select text in xterm.js pane, paste into external editor, output matches original terminal content exactly. xterm.js native selection + browser Clipboard API. | M002 | — |

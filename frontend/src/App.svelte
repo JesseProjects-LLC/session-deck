@@ -41,6 +41,21 @@
   let sessionMgrLoading = $state(false);
   let hosts = $state([]);
 
+  // Settings menu/panel
+  let showSettingsMenu = $state(false);
+  let settingsSection = $state(null); // 'servers' | 'sessions' | 'appearance' | 'help' | null
+
+  // Host management state
+  let managedHosts = $state([]);
+  let managedHostsLoading = $state(false);
+  let hostEditMode = $state(null); // null | 'add' | host.id (editing)
+  let hostForm = $state({ name: '', hostname: '', user: '', port: 22, identity_file: '', auth_method: 'key', group_name: 'Other', enabled: true });
+  let hostDeleteConfirm = $state(null); // host id
+
+  // Settings session management
+  let settingsSessionTab = $state('list'); // 'list' | 'create'
+  let settingsSessionHostFilter = $state(null); // null = all, or host name
+
   // Toast notifications
   let toasts = $state([]);
   let toastId = 0;
@@ -303,6 +318,265 @@
     }
   }
 
+  // --- Settings menu/panel ---
+
+  function toggleSettingsMenu() {
+    showSettingsMenu = !showSettingsMenu;
+  }
+
+  function openSettingsSection(section) {
+    settingsSection = section;
+    showSettingsMenu = false;
+    if (section === 'servers') {
+      autoImportIfEmpty();
+    }
+    if (section === 'sessions') {
+      settingsSessionTab = 'list';
+      settingsSessionHostFilter = null;
+      if (managedHosts.length === 0) loadManagedHosts();
+    }
+  }
+
+  function closeSettingsPanel() {
+    settingsSection = null;
+  }
+
+  function settingsSectionTitle(section) {
+    const titles = { servers: 'Servers', sessions: 'Sessions', appearance: 'Appearance', help: 'Help' };
+    return titles[section] || '';
+  }
+
+  // --- Host management ---
+
+  async function loadManagedHosts() {
+    managedHostsLoading = true;
+    try {
+      const res = await fetch('/api/managed-hosts');
+      const data = await res.json();
+      managedHosts = data.hosts || [];
+    } catch (e) {
+      toast('Failed to load hosts', 'error');
+    } finally {
+      managedHostsLoading = false;
+    }
+  }
+
+  async function autoImportIfEmpty() {
+    const res = await fetch('/api/managed-hosts/count');
+    const { count } = await res.json();
+    if (count === 0) {
+      await importSSHConfig();
+    }
+    await loadManagedHosts();
+  }
+
+  async function importSSHConfig() {
+    managedHostsLoading = true;
+    try {
+      const res = await fetch('/api/managed-hosts/import-ssh-config', { method: 'POST' });
+      const data = await res.json();
+      toast(`Imported ${data.imported} hosts from SSH config (${data.skipped} already existed)`, 'success');
+      await loadManagedHosts();
+    } catch (e) {
+      toast('Failed to import SSH config', 'error');
+    } finally {
+      managedHostsLoading = false;
+    }
+  }
+
+  function startAddHost() {
+    hostEditMode = 'add';
+    hostForm = { name: '', hostname: '', user: '', port: 22, identity_file: '', auth_method: 'key', group_name: 'Other', enabled: true };
+  }
+
+  function startEditHost(host) {
+    hostEditMode = host.id;
+    hostForm = {
+      name: host.name,
+      hostname: host.hostname,
+      user: host.user || '',
+      port: host.port || 22,
+      identity_file: host.identity_file || '',
+      auth_method: host.auth_method || 'key',
+      group_name: host.group_name || 'Other',
+      enabled: !!host.enabled,
+    };
+  }
+
+  function cancelHostEdit() {
+    hostEditMode = null;
+  }
+
+  async function saveHost() {
+    if (!hostForm.name.trim() || !hostForm.hostname.trim()) {
+      toast('Name and hostname are required', 'error');
+      return;
+    }
+    managedHostsLoading = true;
+    try {
+      if (hostEditMode === 'add') {
+        const res = await fetch('/api/managed-hosts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(hostForm),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to create host');
+        toast(`Added host "${hostForm.name}"`, 'success');
+      } else {
+        const res = await fetch(`/api/managed-hosts/${hostEditMode}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(hostForm),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to update host');
+        toast(`Updated host "${hostForm.name}"`, 'success');
+      }
+      hostEditMode = null;
+      await loadManagedHosts();
+      // Also refresh the main hosts list used by sessions/pickers
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      managedHostsLoading = false;
+    }
+  }
+
+  async function deleteHost(id) {
+    managedHostsLoading = true;
+    try {
+      const res = await fetch(`/api/managed-hosts/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete host');
+      toast(`Deleted host "${data.name}"`, 'success');
+      hostDeleteConfirm = null;
+      await loadManagedHosts();
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      managedHostsLoading = false;
+    }
+  }
+
+  function managedHostsByGroup() {
+    const grouped = {};
+    for (const h of managedHosts) {
+      const g = h.group_name || 'Other';
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(h);
+    }
+    // Sort: Local first, then alphabetical
+    return Object.entries(grouped).sort(([a], [b]) => {
+      if (a === 'Local') return -1;
+      if (b === 'Local') return 1;
+      return a.localeCompare(b);
+    });
+  }
+
+  const HOST_GROUPS = ['Local', 'HomeLab LXC', 'HomeLab VM', 'Proxmox', 'NAS', 'VPS', 'Network', 'Client', 'Other'];
+
+  // Host test state
+  let hostTesting = $state({}); // { [hostId]: true } while testing
+
+  async function testHost(id) {
+    hostTesting = { ...hostTesting, [id]: true };
+    try {
+      const res = await fetch(`/api/managed-hosts/${id}/test`, { method: 'POST' });
+      const data = await res.json();
+      // Update the host in our local list with test results
+      managedHosts = managedHosts.map(h => h.id === id ? {
+        ...h,
+        last_test_status: data.status,
+        last_test_at: new Date().toISOString(),
+        tmux_available: data.tmuxAvailable ? 1 : 0,
+        _testResult: data, // transient — holds OS, error, installCommand for UI
+      } : h);
+      if (data.status === 'ok') {
+        const tmuxMsg = data.tmuxAvailable ? `tmux ${data.tmuxVersion || 'available'}` : 'no tmux';
+        toast(`${managedHosts.find(h => h.id === id)?.name}: reachable (${tmuxMsg})`, 'success');
+      } else {
+        toast(`${managedHosts.find(h => h.id === id)?.name}: ${data.error || 'unreachable'}`, 'error');
+      }
+    } catch (e) {
+      toast(`Test failed: ${e.message}`, 'error');
+    } finally {
+      hostTesting = { ...hostTesting, [id]: false };
+    }
+  }
+
+  function managedHostsForSessions() {
+    // Return hosts that are enabled and not network/client devices
+    return managedHosts.filter(h => h.enabled && h.group_name !== 'Network' && h.group_name !== 'Client');
+  }
+
+  function filteredSessionsByHost() {
+    const filtered = settingsSessionHostFilter
+      ? sessions.filter(s => (s.host || 'reliant') === settingsSessionHostFilter)
+      : sessions;
+    const grouped = {};
+    for (const s of filtered) {
+      const h = s.host || 'reliant';
+      if (!grouped[h]) grouped[h] = [];
+      grouped[h].push(s);
+    }
+    return Object.entries(grouped).sort(([a], [b]) => {
+      if (a === 'reliant') return -1;
+      if (b === 'reliant') return 1;
+      return a.localeCompare(b);
+    });
+  }
+
+  async function handleSettingsCreateSession() {
+    if (!newSessionName.trim()) return;
+    sessionMgrLoading = true;
+    try {
+      const res = await fetch(`/api/sessions/${newSessionHost}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSessionName.trim(), startDir: newSessionDir.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create session');
+      toast(`Created session "${newSessionName.trim()}" on ${newSessionHost}`, 'success');
+      newSessionName = '';
+      newSessionDir = '';
+      settingsSessionTab = 'list';
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      sessionMgrLoading = false;
+    }
+  }
+
+  async function testAllHosts() {
+    const enabled = managedHosts.filter(h => h.enabled);
+    for (const h of enabled) hostTesting = { ...hostTesting, [h.id]: true };
+    try {
+      const res = await fetch('/api/managed-hosts/test-all', { method: 'POST' });
+      const data = await res.json();
+      // Update all hosts with results
+      for (const r of data.results) {
+        managedHosts = managedHosts.map(h => h.id === r.id ? {
+          ...h,
+          last_test_status: r.status,
+          last_test_at: new Date().toISOString(),
+          tmux_available: r.tmuxAvailable ? 1 : 0,
+          _testResult: r,
+        } : h);
+      }
+      const okCount = data.results.filter(r => r.status === 'ok').length;
+      toast(`Tested ${data.tested} hosts: ${okCount} reachable, ${data.tested - okCount} unreachable`, okCount === data.tested ? 'success' : 'info');
+    } catch (e) {
+      toast(`Test all failed: ${e.message}`, 'error');
+    } finally {
+      hostTesting = {};
+    }
+  }
+
   // --- Session management ---
 
   function openSessionManager() {
@@ -411,7 +685,7 @@
     return workspaces.find(w => w.id === activeId)?.name || '';
   }
 
-  function handleWindowClick() { contextMenu = null; paneMenu = null; }
+  function handleWindowClick() { contextMenu = null; paneMenu = null; showSettingsMenu = false; }
 
   function handlePaneContextMenu(e, path, session, host) {
     paneMenu = { x: e.clientX, y: e.clientY, path, session, host };
@@ -492,6 +766,8 @@
 
     // Escape to close panels/menus/unzoom
     if (e.key === 'Escape') {
+      if (settingsSection) { settingsSection = null; return; }
+      if (showSettingsMenu) { showSettingsMenu = false; return; }
       if (zoomedPane) { zoomedPane = null; return; }
       contextMenu = null;
       paneMenu = null;
@@ -514,7 +790,34 @@
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 <div class="app" onclick={handleWindowClick}>
   <nav class="topnav">
-    <span class="logo">SESSION DECK</span>
+    <div class="logo-wrap">
+      <button class="logo" onclick={(e) => { e.stopPropagation(); toggleSettingsMenu(); }} title="Settings">SESSION DECK</button>
+      {#if showSettingsMenu}
+        <div class="settings-dropdown" onclick={(e) => e.stopPropagation()}>
+          <button class="settings-item" onclick={() => openSettingsSection('servers')}>
+            <span class="settings-icon servers-icon"></span>
+            Servers
+            <span class="settings-hint">Manage hosts</span>
+          </button>
+          <button class="settings-item" onclick={() => openSettingsSection('sessions')}>
+            <span class="settings-icon sessions-icon"></span>
+            Sessions
+            <span class="settings-hint">tmux sessions</span>
+          </button>
+          <div class="settings-sep"></div>
+          <button class="settings-item" onclick={() => openSettingsSection('appearance')}>
+            <span class="settings-icon appearance-icon"></span>
+            Appearance
+            <span class="settings-hint">Colors &amp; theme</span>
+          </button>
+          <button class="settings-item" onclick={() => openSettingsSection('help')}>
+            <span class="settings-icon help-icon"></span>
+            Help
+            <span class="settings-hint">Shortcuts &amp; docs</span>
+          </button>
+        </div>
+      {/if}
+    </div>
     <span class="sep"></span>
     <div class="ws-tabs">
       {#each workspaces as ws, i}
@@ -672,6 +975,338 @@
       </aside>
     {/if}
   </div>
+
+  <!-- Settings panel (slide-over from left) -->
+  {#if settingsSection}
+    <div class="settings-overlay" onclick={closeSettingsPanel}>
+      <div class="settings-panel" onclick={(e) => e.stopPropagation()}>
+        <div class="settings-panel-hdr">
+          <button class="settings-back" onclick={closeSettingsPanel}>
+            <span class="back-arrow"></span>
+          </button>
+          <span class="settings-panel-title">{settingsSectionTitle(settingsSection)}</span>
+          <button class="picker-close" onclick={closeSettingsPanel}>&times;</button>
+        </div>
+        <div class="settings-panel-body">
+          {#if settingsSection === 'servers'}
+            <div class="host-mgr">
+              <div class="host-mgr-toolbar">
+                <span class="host-mgr-count">{managedHosts.length} hosts</span>
+                <span class="spacer"></span>
+                <button class="host-toolbar-btn" onclick={testAllHosts} disabled={managedHostsLoading || Object.values(hostTesting).some(Boolean)} title="Test connectivity on all enabled hosts">
+                  {Object.values(hostTesting).some(Boolean) ? 'Testing...' : 'Test All'}
+                </button>
+                <button class="host-toolbar-btn" onclick={importSSHConfig} disabled={managedHostsLoading} title="Re-import from ~/.ssh/config">
+                  Import SSH Config
+                </button>
+                <button class="host-toolbar-btn primary" onclick={startAddHost} disabled={managedHostsLoading}>
+                  + Add Host
+                </button>
+              </div>
+
+              {#if hostEditMode}
+                <div class="host-form">
+                  <div class="host-form-title">{hostEditMode === 'add' ? 'Add Host' : 'Edit Host'}</div>
+                  <div class="host-form-grid">
+                    <label class="host-field">
+                      <span class="host-field-label">Name *</span>
+                      <input class="field-input" type="text" bind:value={hostForm.name} placeholder="my-server" />
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">Hostname / IP *</span>
+                      <input class="field-input" type="text" bind:value={hostForm.hostname} placeholder="192.168.1.100" />
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">User</span>
+                      <input class="field-input" type="text" bind:value={hostForm.user} placeholder="claude" />
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">Port</span>
+                      <input class="field-input" type="number" bind:value={hostForm.port} />
+                    </label>
+                    <label class="host-field full-width">
+                      <span class="host-field-label">Identity File</span>
+                      <input class="field-input" type="text" bind:value={hostForm.identity_file} placeholder="~/.ssh/id_ed25519" />
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">Group</span>
+                      <select class="field-input" bind:value={hostForm.group_name}>
+                        {#each HOST_GROUPS as g}
+                          <option value={g}>{g}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">Enabled</span>
+                      <label class="host-toggle">
+                        <input type="checkbox" bind:checked={hostForm.enabled} />
+                        <span class="toggle-label">{hostForm.enabled ? 'Yes' : 'No'}</span>
+                      </label>
+                    </label>
+                  </div>
+                  <div class="host-form-actions">
+                    <button class="action-btn secondary" onclick={cancelHostEdit}>Cancel</button>
+                    <button class="action-btn" onclick={saveHost} disabled={managedHostsLoading || !hostForm.name.trim() || !hostForm.hostname.trim()}>
+                      {managedHostsLoading ? 'Saving...' : (hostEditMode === 'add' ? 'Add Host' : 'Save Changes')}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+
+              {#if managedHostsLoading && managedHosts.length === 0}
+                <div class="host-loading">Loading hosts...</div>
+              {:else}
+                {#each managedHostsByGroup() as [groupName, groupHosts]}
+                  <div class="host-group">
+                    <div class="host-group-label">{groupName} <span class="host-group-cnt">({groupHosts.length})</span></div>
+                    {#each groupHosts as h}
+                      <div class="host-row" class:disabled={!h.enabled}>
+                        <div class="host-row-main">
+                          <span class="host-name">{h.name}</span>
+                          <span class="host-addr">{h.user ? h.user + '@' : ''}{h.hostname}{h.port !== 22 ? ':' + h.port : ''}</span>
+                          {#if h.is_local}
+                            <span class="host-badge local">local</span>
+                          {/if}
+                          {#if !h.enabled}
+                            <span class="host-badge disabled-badge">disabled</span>
+                          {/if}
+                          {#if hostTesting[h.id]}
+                            <span class="host-badge testing-badge">testing...</span>
+                          {:else if h.last_test_status === 'ok'}
+                            <span class="host-badge ok-badge">reachable</span>
+                          {:else if h.last_test_status === 'error'}
+                            <span class="host-badge error-badge">unreachable</span>
+                          {/if}
+                          {#if h.tmux_available === 1}
+                            <span class="host-badge tmux-badge">tmux</span>
+                          {:else if h.tmux_available === 0}
+                            <span class="host-badge no-tmux-badge">no tmux</span>
+                          {/if}
+                        </div>
+                        <div class="host-row-actions">
+                          <button
+                            class="mgr-act test-btn"
+                            title="Test connectivity"
+                            onclick={() => testHost(h.id)}
+                            disabled={hostTesting[h.id]}
+                          >
+                            {hostTesting[h.id] ? '...' : 'Test'}
+                          </button>
+                          <button
+                            class="mgr-act test-btn"
+                            title="View sessions on this host"
+                            onclick={() => { settingsSessionHostFilter = h.name; settingsSection = 'sessions'; settingsSessionTab = 'list'; }}
+                          >
+                            Sessions
+                          </button>
+                          <button class="mgr-act" title="Edit" onclick={() => startEditHost(h)}>
+                            <span class="mgr-icon-rename"></span>
+                          </button>
+                          {#if hostDeleteConfirm === h.id}
+                            <button class="mgr-act confirm-del" title="Confirm delete" onclick={() => deleteHost(h.id)}>
+                              Yes
+                            </button>
+                            <button class="mgr-act" title="Cancel" onclick={() => hostDeleteConfirm = null}>
+                              No
+                            </button>
+                          {:else}
+                            <button class="mgr-act danger" title="Delete" onclick={() => hostDeleteConfirm = h.id}>
+                              <span class="mgr-icon-delete"></span>
+                            </button>
+                          {/if}
+                        </div>
+                      </div>
+                      {#if h._testResult && !h._testResult.tmuxAvailable && h.last_test_status === 'ok'}
+                        <div class="host-setup-hint">
+                          <span class="host-setup-os">{h._testResult.os || 'Unknown OS'}</span>
+                          {#if h._testResult.installCommand}
+                            <span class="host-setup-label">Install tmux:</span>
+                            <code class="host-setup-cmd">{h._testResult.installCommand}</code>
+                            <button class="host-setup-copy" onclick={() => { navigator.clipboard.writeText(h._testResult.installCommand); toast('Copied to clipboard', 'info'); }}>
+                              Copy
+                            </button>
+                          {/if}
+                        </div>
+                      {/if}
+                      {#if h._testResult && h.last_test_status === 'error'}
+                        <div class="host-error-hint">
+                          {h._testResult.error || 'Connection failed'} ({h._testResult.durationMs}ms)
+                        </div>
+                      {/if}
+                    {/each}
+                  </div>
+                {:else}
+                  <div class="host-empty">
+                    <span>No hosts configured</span>
+                    <button class="action-btn" onclick={importSSHConfig}>Import from SSH Config</button>
+                  </div>
+                {/each}
+              {/if}
+            </div>
+          {:else if settingsSection === 'sessions'}
+            <div class="host-mgr">
+              <div class="host-mgr-toolbar">
+                <span class="host-mgr-count">{sessions.length} sessions</span>
+                <span class="spacer"></span>
+                <button class="host-toolbar-btn primary" onclick={() => { settingsSessionTab = 'create'; }}>
+                  + New Session
+                </button>
+              </div>
+
+              <!-- Host filter tabs -->
+              <div class="session-host-tabs">
+                <button
+                  class="session-host-tab"
+                  class:active={!settingsSessionHostFilter}
+                  onclick={() => settingsSessionHostFilter = null}
+                >All Hosts</button>
+                {#each managedHostsForSessions() as h}
+                  <button
+                    class="session-host-tab"
+                    class:active={settingsSessionHostFilter === h.name}
+                    onclick={() => settingsSessionHostFilter = h.name}
+                  >{h.name}
+                    <span class="session-host-cnt">{sessions.filter(s => (s.host || 'reliant') === h.name).length}</span>
+                  </button>
+                {/each}
+              </div>
+
+              {#if settingsSessionTab === 'create'}
+                <div class="host-form">
+                  <div class="host-form-title">New Session</div>
+                  <div class="host-form-grid">
+                    <label class="host-field">
+                      <span class="host-field-label">Session Name *</span>
+                      <input class="field-input" type="text" bind:value={newSessionName} placeholder="my-session"
+                        onkeydown={(e) => e.key === 'Enter' && handleSettingsCreateSession()} />
+                    </label>
+                    <label class="host-field">
+                      <span class="host-field-label">Host</span>
+                      <select class="field-input" bind:value={newSessionHost}>
+                        {#each managedHostsForSessions() as h}
+                          <option value={h.name}>{h.name}</option>
+                        {/each}
+                      </select>
+                    </label>
+                    <label class="host-field full-width">
+                      <span class="host-field-label">Start Directory <span class="field-hint">(optional)</span></span>
+                      <input class="field-input" type="text" bind:value={newSessionDir} placeholder="/home/user/project"
+                        onkeydown={(e) => e.key === 'Enter' && handleSettingsCreateSession()} />
+                    </label>
+                  </div>
+                  <div class="host-form-actions">
+                    <button class="action-btn secondary" onclick={() => { settingsSessionTab = 'list'; }}>Cancel</button>
+                    <button class="action-btn" onclick={handleSettingsCreateSession}
+                      disabled={!newSessionName.trim() || sessionMgrLoading}>
+                      {sessionMgrLoading ? 'Creating...' : 'Create Session'}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+
+              <div class="mgr-legend">
+                <span class="mgr-legend-item"><span class="dot claude"></span> Claude Code</span>
+                <span class="mgr-legend-item"><span class="dot gsd"></span> GSD / Auto</span>
+                <span class="mgr-legend-item"><span class="dot terminal"></span> Terminal</span>
+              </div>
+
+              {#each filteredSessionsByHost() as [hostName, hostSessions]}
+                <div class="mgr-host-group">
+                  <div class="mgr-host-label">{hostName}</div>
+                  {#each hostSessions as s}
+                    <div class="mgr-session-row">
+                      <span class="dot {typeClass(s.type)}"></span>
+                      <span class="mgr-session-name">{s.name}</span>
+                      <span class="mgr-session-meta">
+                        {#if s.attached}
+                          <span class="prop-badge attached">active</span>
+                        {:else}
+                          <span class="prop-badge detached">detached</span>
+                        {/if}
+                      </span>
+                      <div class="mgr-session-actions">
+                        <button class="mgr-act" title="Rename" onclick={() => openRenameSessionModal(s.name, hostName)}>
+                          <span class="mgr-icon-rename"></span>
+                        </button>
+                        <button class="mgr-act danger" title="Kill session" onclick={() => openDeleteSessionModal(s.name, hostName)}>
+                          <span class="mgr-icon-delete"></span>
+                        </button>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+              {:else}
+                <div class="host-empty">
+                  <span>No sessions found{settingsSessionHostFilter ? ` on ${settingsSessionHostFilter}` : ''}</span>
+                </div>
+              {/each}
+            </div>
+          {:else if settingsSection === 'appearance'}
+            <div class="settings-placeholder">
+              <span class="settings-placeholder-icon appearance-icon-lg"></span>
+              <span class="settings-placeholder-title">Appearance</span>
+              <span class="settings-placeholder-desc">Session type colors and visual theme configuration.</span>
+              <div class="color-preview">
+                <div class="color-row">
+                  <span class="dot claude"></span>
+                  <span class="color-label">Claude Code</span>
+                  <span class="color-value">#3d8bfd</span>
+                </div>
+                <div class="color-row">
+                  <span class="dot gsd"></span>
+                  <span class="color-label">GSD / Auto</span>
+                  <span class="color-value">#c792ea</span>
+                </div>
+                <div class="color-row">
+                  <span class="dot terminal"></span>
+                  <span class="color-label">Terminal</span>
+                  <span class="color-value">#6b7688</span>
+                </div>
+              </div>
+            </div>
+          {:else if settingsSection === 'help'}
+            <div class="help-section">
+              <div class="help-group">
+                <span class="help-group-title">Workspace Navigation</span>
+                <div class="help-row"><kbd>1</kbd>–<kbd>9</kbd><span>Switch workspace</span></div>
+                <div class="help-row"><kbd>N</kbd><span>New workspace</span></div>
+                <div class="help-row"><kbd>I</kbd><span>Toggle properties panel</span></div>
+              </div>
+              <div class="help-group">
+                <span class="help-group-title">Pane Control</span>
+                <div class="help-row"><kbd>Shift+1</kbd>–<kbd>9</kbd><span>Focus pane by index</span></div>
+                <div class="help-row"><kbd>Ctrl+Shift+F</kbd><span>Zoom / unzoom pane</span></div>
+                <div class="help-row"><kbd>Esc</kbd><span>Unzoom / close menu</span></div>
+              </div>
+              <div class="help-group">
+                <span class="help-group-title">Pane Actions (right-click)</span>
+                <div class="help-row"><span class="help-label">Change Session</span><span>Assign a different tmux session</span></div>
+                <div class="help-row"><span class="help-label">Split H / V</span><span>Split pane horizontally or vertically</span></div>
+                <div class="help-row"><span class="help-label">Close Pane</span><span>Remove pane from layout</span></div>
+              </div>
+              <div class="help-group">
+                <span class="help-group-title">Drag &amp; Drop</span>
+                <div class="help-row"><span class="help-label">Center drop</span><span>Swap two panes</span></div>
+                <div class="help-row"><span class="help-label">Edge drop</span><span>Split target in that direction</span></div>
+              </div>
+              <div class="help-group">
+                <span class="help-group-title">Copy / Paste</span>
+                <div class="help-row"><span class="help-label">Select</span><span>Click and drag in terminal</span></div>
+                <div class="help-row"><kbd>Ctrl+C</kbd><span>Copy selection (when text selected)</span></div>
+                <div class="help-row"><kbd>Ctrl+V</kbd><span>Paste from clipboard</span></div>
+              </div>
+              <div class="help-about">
+                <span class="help-about-title">Session Deck</span>
+                <span class="help-about-desc">Web-based tmux workspace manager</span>
+                <span class="help-about-url">deck.hha.sh</span>
+                <span class="help-about-version">v0.1.0</span>
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Workspace context menu -->
   {#if contextMenu}
@@ -984,7 +1619,14 @@
     background: #151b23; border-bottom: 1px solid #1e2530;
     display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   }
-  .logo { font-size: 13px; font-weight: 700; color: #3d8bfd; font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+  .logo {
+    font-size: 13px; font-weight: 700; color: #3d8bfd;
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 1px;
+    background: none; border: none; cursor: pointer; padding: 4px 8px;
+    border-radius: 4px; transition: all 0.12s;
+  }
+  .logo:hover { background: rgba(61,139,253,0.1); }
+  .logo-wrap { position: relative; }
   .sep { width: 1px; height: 18px; background: #1e2530; }
   .spacer { flex: 1; }
   .ws-tabs { display: flex; gap: 2px; }
@@ -1324,4 +1966,327 @@
   .prop-act-btn:hover { border-color: #3d8bfd; color: #c5cdd9; }
   .prop-act-btn.danger { border-color: rgba(240,113,120,0.2); color: #6b7688; }
   .prop-act-btn.danger:hover { border-color: #f07178; color: #f07178; background: rgba(240,113,120,0.08); }
+
+  /* Settings dropdown menu */
+  .settings-dropdown {
+    position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 3000;
+    background: #1c2333; border: 1px solid #2a3345; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); padding: 4px; min-width: 200px;
+  }
+  .settings-item {
+    width: 100%; padding: 8px 12px; border: none; background: transparent;
+    color: #c5cdd9; font-size: 12px; text-align: left; cursor: pointer;
+    border-radius: 4px; display: flex; align-items: center; gap: 10px;
+    font-family: 'DM Sans', sans-serif; transition: background 0.1s;
+  }
+  .settings-item:hover { background: #252d3d; }
+  .settings-hint {
+    margin-left: auto; font-size: 10px; color: #3d4450;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .settings-sep { height: 1px; background: #2a3345; margin: 4px 8px; }
+
+  /* Settings icons — pure CSS */
+  .settings-icon {
+    display: inline-block; width: 14px; height: 14px; flex-shrink: 0;
+    position: relative;
+  }
+  .servers-icon::before {
+    content: ''; position: absolute; top: 1px; left: 2px;
+    width: 10px; height: 4px; border: 1.5px solid currentColor; border-radius: 2px;
+  }
+  .servers-icon::after {
+    content: ''; position: absolute; bottom: 1px; left: 2px;
+    width: 10px; height: 4px; border: 1.5px solid currentColor; border-radius: 2px;
+  }
+  .sessions-icon::before {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px;
+  }
+  .sessions-icon::after {
+    content: '>'; position: absolute; top: 3px; left: 5px;
+    font-size: 8px; color: currentColor; font-weight: bold;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .appearance-icon::before {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 1.5px solid currentColor;
+  }
+  .appearance-icon::after {
+    content: ''; position: absolute; top: 4px; left: 6px;
+    width: 4px; height: 4px; background: currentColor; border-radius: 50%;
+  }
+  .help-icon::before {
+    content: '?'; position: absolute; top: 0; left: 3px;
+    font-size: 12px; font-weight: 700; color: currentColor;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Settings panel (slide-over) */
+  .settings-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); backdrop-filter: blur(2px);
+    z-index: 2500; display: flex;
+  }
+  .settings-panel {
+    width: 420px; max-width: 90vw; height: 100%;
+    background: #121820; border-right: 1px solid #1e2530;
+    box-shadow: 8px 0 24px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column;
+    animation: slide-in-left 0.15s ease-out;
+  }
+  @keyframes slide-in-left {
+    from { transform: translateX(-100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .settings-panel-hdr {
+    padding: 12px 16px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid #1e2530; flex-shrink: 0;
+  }
+  .settings-back {
+    width: 28px; height: 28px; border-radius: 4px; border: 1px solid #1e2530;
+    background: transparent; color: #6b7688; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .settings-back:hover { border-color: #3d8bfd; color: #c5cdd9; }
+  .back-arrow {
+    display: block; width: 8px; height: 8px;
+    border-left: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: rotate(45deg); margin-left: 2px;
+  }
+  .settings-panel-title {
+    font-size: 14px; font-weight: 600; color: #c5cdd9; flex: 1;
+  }
+  .settings-panel-body {
+    flex: 1; overflow-y: auto; padding: 16px;
+  }
+
+  /* Placeholder content for sections not yet built */
+  .settings-placeholder {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 40px 20px; text-align: center;
+  }
+  .settings-placeholder-icon {
+    display: block; width: 48px; height: 48px; position: relative; color: #3d4450;
+  }
+  .servers-icon-lg::before {
+    content: ''; position: absolute; top: 4px; left: 8px;
+    width: 32px; height: 14px; border: 2px solid currentColor; border-radius: 4px;
+  }
+  .servers-icon-lg::after {
+    content: ''; position: absolute; bottom: 4px; left: 8px;
+    width: 32px; height: 14px; border: 2px solid currentColor; border-radius: 4px;
+  }
+  .sessions-icon-lg::before {
+    content: ''; position: absolute; top: 4px; left: 8px;
+    width: 32px; height: 36px; border: 2px solid currentColor; border-radius: 4px;
+  }
+  .sessions-icon-lg::after {
+    content: '>_'; position: absolute; top: 14px; left: 14px;
+    font-size: 16px; color: currentColor; font-family: 'JetBrains Mono', monospace;
+  }
+  .appearance-icon-lg::before {
+    content: ''; position: absolute; top: 4px; left: 8px;
+    width: 32px; height: 32px; border-radius: 50%; border: 2px solid currentColor;
+  }
+  .settings-placeholder-title {
+    font-size: 14px; font-weight: 600; color: #6b7688;
+  }
+  .settings-placeholder-desc {
+    font-size: 12px; color: #3d4450; line-height: 1.5; max-width: 280px;
+  }
+
+  /* Color preview in appearance */
+  .color-preview {
+    display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
+    width: 100%; max-width: 240px;
+  }
+  .color-row {
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+  }
+  .color-label { color: #c5cdd9; flex: 1; }
+  .color-value { color: #3d4450; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+
+  /* Help section */
+  .help-section {
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .help-group {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .help-group-title {
+    font-size: 10px; color: #3d4450; text-transform: uppercase;
+    letter-spacing: 0.5px; font-weight: 600; margin-bottom: 2px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .help-row {
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+    padding: 3px 0;
+  }
+  .help-row kbd {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px; min-width: 24px;
+    text-align: center;
+    background: #0a0e14; border: 1px solid #1e2530; color: #6b7688;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .help-row span { color: #c5cdd9; }
+  .help-label {
+    font-size: 11px; color: #6b7688; min-width: 100px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .help-about {
+    margin-top: 12px; padding-top: 16px; border-top: 1px solid #1e2530;
+    display: flex; flex-direction: column; gap: 4px; text-align: center;
+  }
+  .help-about-title { font-size: 14px; font-weight: 700; color: #3d8bfd; font-family: 'JetBrains Mono', monospace; }
+  .help-about-desc { font-size: 11px; color: #6b7688; }
+  .help-about-url { font-size: 10px; color: #3d4450; font-family: 'JetBrains Mono', monospace; }
+  .help-about-version { font-size: 9px; color: #3d4450; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+  /* Host management */
+  .host-mgr { display: flex; flex-direction: column; gap: 12px; }
+  .host-mgr-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid #1e2530;
+  }
+  .host-mgr-count {
+    font-size: 11px; color: #6b7688; font-family: 'JetBrains Mono', monospace;
+  }
+  .host-toolbar-btn {
+    padding: 4px 10px; border-radius: 4px; border: 1px solid #1e2530;
+    background: transparent; color: #6b7688; font-size: 11px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.1s;
+  }
+  .host-toolbar-btn:hover { border-color: #3d8bfd; color: #c5cdd9; }
+  .host-toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .host-toolbar-btn.primary { border-color: #3d8bfd; color: #3d8bfd; }
+  .host-toolbar-btn.primary:hover { background: rgba(61,139,253,0.1); }
+
+  .host-form {
+    background: #0b0e14; border: 1px solid #1e2530; border-radius: 8px;
+    padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .host-form-title { font-size: 12px; font-weight: 600; color: #c5cdd9; }
+  .host-form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .host-field { display: flex; flex-direction: column; gap: 3px; }
+  .host-field.full-width { grid-column: 1 / -1; }
+  .host-field-label { font-size: 10px; color: #6b7688; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+  .host-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .host-toggle {
+    display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 12px; color: #c5cdd9;
+  }
+  .host-toggle input { accent-color: #3d8bfd; }
+  .toggle-label { font-size: 11px; color: #6b7688; }
+
+  .host-group { margin-bottom: 4px; }
+  .host-group-label {
+    padding: 6px 0 4px; font-size: 10px; color: #3d4450;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .host-group-cnt { font-weight: 400; }
+
+  .host-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 8px; border-radius: 6px; transition: background 0.1s;
+  }
+  .host-row:hover { background: #1c2333; }
+  .host-row:hover .host-row-actions { opacity: 1; }
+  .host-row.disabled { opacity: 0.45; }
+  .host-row-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .host-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: #c5cdd9; font-weight: 500; white-space: nowrap;
+  }
+  .host-addr {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    color: #3d4450; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .host-badge {
+    font-size: 8px; padding: 1px 5px; border-radius: 3px; font-weight: 500;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .host-badge.local { background: rgba(61,139,253,0.1); color: #3d8bfd; }
+  .host-badge.disabled-badge { background: rgba(107,118,136,0.1); color: #6b7688; }
+  .host-badge.ok-badge { background: rgba(127,217,98,0.1); color: #7fd962; }
+  .host-badge.error-badge { background: rgba(240,113,120,0.1); color: #f07178; }
+  .host-badge.tmux-badge { background: rgba(127,217,98,0.1); color: #7fd962; }
+  .host-badge.no-tmux-badge { background: rgba(255,203,107,0.1); color: #ffcb6b; }
+  .host-badge.testing-badge { background: rgba(61,139,253,0.1); color: #3d8bfd; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  .host-row-actions {
+    display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; flex-shrink: 0;
+  }
+  .test-btn {
+    font-size: 9px; font-weight: 500; width: auto !important; padding: 0 6px;
+    color: #3d8bfd; font-family: 'JetBrains Mono', monospace;
+  }
+  .test-btn:hover { background: rgba(61,139,253,0.1); border-color: #3d8bfd; }
+  .test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .confirm-del {
+    font-size: 10px; color: #f07178; font-weight: 600;
+    width: auto !important; padding: 0 6px;
+  }
+
+  .host-loading, .host-empty {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 32px; color: #3d4450; font-size: 12px;
+  }
+
+  /* Field select styling */
+  .host-form select.field-input {
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%233d4450'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    padding-right: 24px;
+  }
+
+  /* Host test result hints */
+  .host-setup-hint {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 4px 8px 4px 24px; font-size: 10px; color: #ffcb6b;
+    margin-top: -2px; margin-bottom: 4px;
+  }
+  .host-setup-os { color: #6b7688; }
+  .host-setup-label { color: #6b7688; }
+  .host-setup-cmd {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    background: #0a0e14; padding: 2px 8px; border-radius: 3px;
+    border: 1px solid #1e2530; color: #c5cdd9;
+  }
+  .host-setup-copy {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px;
+    border: 1px solid rgba(61,139,253,0.3); background: transparent;
+    color: #3d8bfd; cursor: pointer; transition: all 0.1s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .host-setup-copy:hover { background: rgba(61,139,253,0.1); }
+  .host-error-hint {
+    padding: 4px 8px 4px 24px; font-size: 10px; color: #f07178;
+    margin-top: -2px; margin-bottom: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Session host filter tabs */
+  .session-host-tabs {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    padding-bottom: 8px; border-bottom: 1px solid #1e2530;
+  }
+  .session-host-tab {
+    padding: 3px 8px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: #6b7688; font-size: 11px; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; transition: all 0.1s;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .session-host-tab:hover { color: #c5cdd9; }
+  .session-host-tab.active { color: #3d8bfd; background: rgba(61,139,253,0.08); border-color: rgba(61,139,253,0.2); }
+  .session-host-cnt { font-size: 9px; color: #3d4450; }
 </style>

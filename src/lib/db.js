@@ -72,6 +72,25 @@ function migrate(db) {
       deployed_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (preset_id) REFERENCES layout_presets(id)
     );
+
+    CREATE TABLE IF NOT EXISTS managed_hosts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      hostname TEXT NOT NULL,
+      user TEXT,
+      port INTEGER NOT NULL DEFAULT 22,
+      identity_file TEXT,
+      auth_method TEXT NOT NULL DEFAULT 'key',
+      group_name TEXT NOT NULL DEFAULT 'Other',
+      is_local INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      last_test_status TEXT,
+      last_test_at TEXT,
+      tmux_available INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add sort_order if missing (for existing DBs)

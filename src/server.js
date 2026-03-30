@@ -10,6 +10,7 @@ import config from './lib/config.js';
 import { getDb, closeDb } from './lib/db.js';
 import healthRoutes from './routes/health.js';
 import hostsRoutes from './routes/hosts.js';
+import managedHostsRoutes from './routes/managed-hosts.js';
 import sessionsRoutes from './routes/sessions.js';
 import terminalWsRoutes from './routes/terminal-ws.js';
 import workspaceRoutes from './routes/workspaces.js';
@@ -72,6 +73,7 @@ export async function buildServer() {
   // Routes
   await fastify.register(healthRoutes);
   await fastify.register(hostsRoutes);
+  await fastify.register(managedHostsRoutes);
   await fastify.register(sessionsRoutes);
   await fastify.register(terminalWsRoutes);
   await fastify.register(workspaceRoutes);
