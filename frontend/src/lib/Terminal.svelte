@@ -14,6 +14,7 @@
   let resizeTimer;
   let lastCols = 0;
   let lastRows = 0;
+  let lastResizeTime = 0;
   let suppressResize = false;
   let suppressTimer;
   let prevSession = $state(session);
@@ -100,6 +101,10 @@
     const rows = term.rows;
     // Only send if dimensions actually changed
     if (cols === lastCols && rows === lastRows) return;
+    // Rate limit: max 1 resize per second
+    const now = Date.now();
+    if (now - lastResizeTime < 1000) return;
+    lastResizeTime = now;
     lastCols = cols;
     lastRows = rows;
     ws.send(JSON.stringify({ type: 'resize', cols, rows }));

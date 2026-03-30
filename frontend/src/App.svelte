@@ -350,9 +350,31 @@
     }
 
     // N to create new workspace
-    if (e.key === 'n' && !e.ctrlKey && !e.metaKey) {
+    if (e.key === 'n' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault();
       openNewWsModal();
+      return;
+    }
+
+    // Ctrl+Shift+F to zoom/unzoom focused pane
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+      e.preventDefault();
+      if (zoomedPane) {
+        zoomedPane = null;
+      } else if (focusedId) {
+        const [host, ...rest] = focusedId.split(':');
+        const sessionName = rest.join(':');
+        if (sessionName && !sessionName.startsWith('split-')) {
+          handleZoom(focusedId, sessionName, host);
+        }
+      }
+      return;
+    }
+
+    // I to toggle properties panel
+    if (e.key === 'i' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      showPropsPanel = !showPropsPanel;
       return;
     }
 
@@ -360,6 +382,7 @@
     if (e.key === 'Escape') {
       if (zoomedPane) { zoomedPane = null; return; }
       contextMenu = null;
+      paneMenu = null;
       return;
     }
   }
@@ -407,8 +430,8 @@
       class="topnav-btn"
       class:active={showPropsPanel}
       onclick={() => showPropsPanel = !showPropsPanel}
-      title="Properties panel"
-    >{showPropsPanel ? 'Info' : 'Info'}</button>
+      title="Properties panel (I)"
+    >{showPropsPanel ? 'I' : 'I'}</button>
   </nav>
 
   <div class="main-row">
@@ -498,7 +521,7 @@
                 <button
                   class="prop-ws-link"
                   class:current={ws.id === activeId}
-                  onclick={() => switchWorkspace(ws.id)}
+                  onclick={() => { switchWorkspace(ws.id); showPropsPanel = false; }}
                   title="Switch to {ws.name}"
                 >
                   {ws.name}
@@ -668,9 +691,21 @@
     <span class="sep-dot">·</span>
     <span>{sessions.length} sessions</span>
     <span class="spacer"></span>
-    <button class="shortcut-btn" onclick={() => { if (workspaces.length > 1) switchWorkspace(workspaces[1]?.id); }}><kbd>1-9</kbd> workspace</button>
+    <button class="shortcut-btn" onclick={() => {
+      const idx = workspaces.findIndex(w => w.id === activeId);
+      const next = (idx + 1) % workspaces.length;
+      switchWorkspace(workspaces[next].id);
+    }}><kbd>1-9</kbd> workspace</button>
     <button class="shortcut-btn" onclick={openNewWsModal}><kbd>N</kbd> new workspace</button>
-    <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>Info</kbd> properties</button>
+    <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>I</kbd> properties</button>
+    <button class="shortcut-btn" onclick={() => {
+      if (zoomedPane) { zoomedPane = null; }
+      else if (focusedId) {
+        const [h, ...r] = focusedId.split(':');
+        const s = r.join(':');
+        if (s && !s.startsWith('split-')) handleZoom(focusedId, s, h);
+      }
+    }}><kbd>Ctrl+Shift+F</kbd> {zoomedPane ? 'unzoom' : 'zoom'}</button>
     {#if zoomedPane}
       <button class="shortcut-btn" onclick={() => zoomedPane = null}><kbd>Esc</kbd> unzoom</button>
     {/if}
