@@ -1,37 +1,49 @@
 # Session Deck — Product Roadmap
 
-> This roadmap reflects planned features, priorities, and community input. Items marked with ✅ are shipped. Feedback welcome via GitHub Issues.
+> This roadmap reflects planned features, priorities, and community input. Items marked with ✅ are shipped. Feedback welcome via [GitHub Issues](https://github.com/JesseProjects-LLC/session-deck/issues).
 
-## v1.0 — Current Release
+## v1.0 — Shipped ✅
 
-### Core Features ✅
+### Core Features
 - [x] Live terminal panes via xterm.js connected to real tmux sessions
 - [x] Split-tree workspace layouts with drag-to-resize and drag-to-rearrange
 - [x] 6 built-in layout presets (dual, claude-focus, quad, infra, deck, mixed)
-- [x] Multiple workspaces with keyboard switching (1-9)
+- [x] Multiple workspaces with keyboard switching (Alt+1-9)
 - [x] Multi-host tmux management via SSH
 - [x] Session management: create, rename, kill sessions from the browser
 - [x] Lazy connect: only active workspace has live WebSocket connections
 - [x] Clean copy/paste from terminal panes
 - [x] SQLite persistence for workspaces, hosts, and settings
 - [x] systemd service support
+- [x] URL hash permalinks (workspace + focused pane survive refresh)
 
-### Settings & Configuration ✅
+### Settings & Configuration
 - [x] Settings menu (click SESSION DECK logo)
 - [x] Host management: add/edit/remove SSH hosts, import from ~/.ssh/config
 - [x] SSH connectivity testing with tmux detection
-- [x] OS-aware tmux install guidance
+- [x] OS-aware tmux install guidance (10 OS families)
 - [x] Session management with per-host filtering
 - [x] Cross-navigation between servers and sessions
 
-### Theming & Appearance ✅
-- [x] Accent color picker (7 presets + custom hex)
-- [x] Data-driven session type colors (19 pre-seeded types)
+### Theming & Appearance
+- [x] Accent color picker (7 presets + custom hex, persisted)
+- [x] Data-driven session type colors (19 pre-seeded process types)
 - [x] Scan Sessions to auto-discover running processes
 - [x] Editable display names and colors per process type
 - [x] CSS custom properties for full theme customization
 
-### UX ✅
+### Authentication & Security
+- [x] Basic auth (username/password from environment config)
+- [x] Microsoft Entra ID (Azure AD) SSO via OpenID Connect with PKCE
+- [x] Generic OIDC provider support (Authentik, Keycloak, etc.)
+- [x] Session cookies with secure defaults
+- [x] Auth bypass for trusted networks (configurable CIDRs)
+- [x] WebSocket auth enforcement
+- [x] Rate-limited login endpoint (brute-force protection)
+- [x] Security headers (helmet: X-Frame-Options, HSTS, etc.)
+- [x] Input validation on session names (command injection prevention)
+
+### UX
 - [x] Command palette (Ctrl+K) with fuzzy search
 - [x] Keyboard shortcuts for all major actions
 - [x] Right-click context menus on workspace tabs and pane headers
@@ -39,22 +51,16 @@
 - [x] Toast notifications
 - [x] First-run setup wizard
 - [x] Help documentation in settings panel
+- [x] Auto-naming: detect git repo or working directory, shown in pane headers
+- [x] Session rename auto-updates all workspace panes
 
 ---
 
 ## v1.5 — In Progress
 
-### Authentication
-- [ ] Basic auth (username/password from config)
-- [ ] Microsoft Entra ID (Azure AD) SSO via OpenID Connect
-- [ ] Generic OIDC provider support (Authentik, Keycloak, etc.)
-- [ ] Session cookies with secure defaults
-- [ ] Auth bypass for trusted networks (optional)
-
 ### Session Intelligence
-- [ ] Auto-naming: detect git repo or working directory, show as context
 - [ ] Manual pane title override (rename what shows in the pane header)
-- [ ] Connection status indicators per pane (connected/reconnecting/disconnected)
+- [ ] Connection status indicators per pane (connected/reconnecting/disconnected visual)
 
 ### Workspace Management
 - [ ] Workspace templates: save any layout as a reusable template
@@ -110,7 +116,6 @@
 ---
 
 ## Deferred / Evaluating
-- SSH tunnel visualization (evaluating usefulness)
 - Okta SSO (need test environment)
 - Session sharing via URL (security implications for internet-exposed instances)
 
