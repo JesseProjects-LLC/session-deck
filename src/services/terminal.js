@@ -23,22 +23,24 @@ export function spawnTerminal(sessionName, hostName, options = {}) {
   const host = resolveHost(hostName);
 
   if (!host || host.isLocal) {
-    // Local tmux attach
+    // Local tmux attach — -u forces UTF-8 mode regardless of host locale
     shell = 'tmux';
-    args = ['attach-session', '-t', sessionName];
+    args = ['-u', 'attach-session', '-t', sessionName];
   } else {
     // Remote via SSH
     shell = 'ssh';
     args = [
       '-o', 'ConnectTimeout=5',
       '-o', 'StrictHostKeyChecking=accept-new',
+      '-o', 'SendEnv=LANG LC_ALL',
       '-t', // Force PTY allocation
     ];
     if (host.identityFile) {
       args.push('-i', host.identityFile.replace('~', process.env.HOME));
     }
     const userHost = host.user ? `${host.user}@${host.hostname}` : host.hostname;
-    args.push(userHost, `tmux attach-session -t ${sessionName}`);
+    // -u forces tmux UTF-8 on the remote side too
+    args.push(userHost, `LANG=C.UTF-8 LC_ALL=C.UTF-8 tmux -u attach-session -t ${sessionName}`);
   }
 
   const term = pty.spawn(shell, args, {
