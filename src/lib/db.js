@@ -91,6 +91,21 @@ function migrate(db) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS session_types (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      process_name TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#6b7688',
+      sort_order INTEGER NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   // Migration: add sort_order if missing (for existing DBs)
@@ -98,5 +113,43 @@ function migrate(db) {
     db.prepare('SELECT sort_order FROM layout_presets LIMIT 1').get();
   } catch {
     db.exec('ALTER TABLE layout_presets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Seed default session types if empty
+  const typeCount = db.prepare('SELECT COUNT(*) as c FROM session_types').get();
+  if (typeCount.c === 0) {
+    const seedTypes = db.prepare(
+      'INSERT OR IGNORE INTO session_types (process_name, display_name, color, sort_order) VALUES (?, ?, ?, ?)'
+    );
+    const defaults = [
+      ['claude', 'Claude Code', '#3d8bfd', 1],
+      ['gsd', 'GSD', '#c792ea', 2],
+      ['pi', 'GSD (pi)', '#c792ea', 3],
+      ['bash', 'Bash', '#6b7688', 10],
+      ['zsh', 'Zsh', '#6b7688', 11],
+      ['fish', 'Fish', '#6b7688', 12],
+      ['vim', 'Vim', '#98c379', 20],
+      ['nvim', 'Neovim', '#98c379', 21],
+      ['htop', 'htop', '#56b6c2', 30],
+      ['top', 'top', '#56b6c2', 31],
+      ['btop', 'btop', '#56b6c2', 32],
+      ['python', 'Python', '#e5c07b', 40],
+      ['python3', 'Python 3', '#e5c07b', 41],
+      ['node', 'Node.js', '#98c379', 42],
+      ['docker', 'Docker', '#61afef', 50],
+      ['ssh', 'SSH', '#d19a66', 60],
+      ['tail', 'tail (logs)', '#e06c75', 70],
+      ['less', 'less', '#6b7688', 71],
+      ['man', 'man', '#6b7688', 72],
+    ];
+    for (const [proc, name, color, order] of defaults) {
+      seedTypes.run(proc, name, color, order);
+    }
+  }
+
+  // Seed default accent color if not set
+  const accentSetting = db.prepare("SELECT value FROM app_settings WHERE key = 'accent_color'").get();
+  if (!accentSetting) {
+    db.prepare("INSERT INTO app_settings (key, value) VALUES ('accent_color', '#F97316')").run();
   }
 }

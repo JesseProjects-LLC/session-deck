@@ -14,6 +14,25 @@ const TYPE_MAP = {
   pi: 'gsd',
 };
 
+// Dynamic type map loaded from DB (falls back to TYPE_MAP if DB unavailable)
+let dynamicTypeMap = null;
+
+/**
+ * Load session type mappings from the database.
+ * Call this after DB is initialized to enable dynamic type detection.
+ */
+export function loadTypeMap(db) {
+  try {
+    const types = db.prepare('SELECT process_name, display_name FROM session_types').all();
+    dynamicTypeMap = {};
+    for (const t of types) {
+      dynamicTypeMap[t.process_name] = t.process_name; // return raw process name as type
+    }
+  } catch {
+    dynamicTypeMap = null;
+  }
+}
+
 /**
  * List tmux sessions on a host.
  * @param {object} host — host entry from ssh-config parser
@@ -85,11 +104,20 @@ async function detectType(host, sessionName, timeout) {
       : await execRemote(host, `tmux list-panes -t '${sessionName}' -F '${PANE_FORMAT}'`, timeout);
 
     const commands = raw.trim().split('\n').map(c => c.trim().toLowerCase());
-    // Check all panes — first match wins
+    // Check all panes — first non-shell match wins, then fall back to shell type
     for (const cmd of commands) {
-      if (TYPE_MAP[cmd]) return TYPE_MAP[cmd];
+      // If we have a dynamic map, check if this process is a "notable" one (not a shell)
+      if (dynamicTypeMap) {
+        // Skip common shells to find the "interesting" process
+        if (!['bash', 'zsh', 'fish', 'sh', 'dash', 'tcsh', 'csh'].includes(cmd) && dynamicTypeMap[cmd]) {
+          return cmd;
+        }
+      } else if (TYPE_MAP[cmd]) {
+        return TYPE_MAP[cmd];
+      }
     }
-    return 'terminal';
+    // Return the first command (usually the shell) as the type
+    return commands[0] || 'terminal';
   } catch {
     return 'terminal'; // default if detection fails
   }

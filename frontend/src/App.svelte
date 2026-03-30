@@ -55,6 +55,15 @@
   let settingsSessionTab = $state('list'); // 'list' | 'create'
   let settingsSessionHostFilter = $state(null); // null = all, or host name
 
+  // Appearance / theming
+  let sessionTypes = $state([]); // from /api/session-types
+  let sessionTypeMap = $state({}); // { process_name: { display_name, color } }
+  let accentColor = $state('#F97316');
+  let editingTypeId = $state(null);
+  let editTypeColor = $state('');
+  let editTypeName = $state('');
+  let scanningTypes = $state(false);
+
   // Setup wizard (first-run)
   let showSetupWizard = $state(false);
   let setupStep = $state(1); // 1: welcome/import, 2: test hosts, 3: create workspace
@@ -108,12 +117,115 @@
   }
 
   function typeLabel(type) {
-    if (type === 'claude-code') return 'Claude Code';
-    if (type === 'gsd') return 'GSD Auto';
-    return 'Terminal';
+    return sessionTypeMap[type]?.display_name || type || 'Terminal';
+  }
+
+  function typeColor(type) {
+    return sessionTypeMap[type]?.color || '#6b7688';
   }
 
   let refreshTimer;
+
+  async function loadSessionTypes() {
+    try {
+      const res = await fetch('/api/session-types');
+      const data = await res.json();
+      sessionTypes = data.types || [];
+      const map = {};
+      for (const t of sessionTypes) {
+        map[t.process_name] = { display_name: t.display_name, color: t.color };
+      }
+      sessionTypeMap = map;
+    } catch { /* ignore */ }
+  }
+
+  async function loadAppSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.accent_color) {
+        accentColor = data.accent_color;
+        applyAccentColor(data.accent_color);
+      }
+    } catch { /* ignore */ }
+  }
+
+  function applyAccentColor(color) {
+    const el = document.querySelector('.app');
+    if (!el) return;
+    el.style.setProperty('--accent', color);
+    // Compute transparent variants
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    el.style.setProperty('--accent-hover', lightenHex(color, 25));
+    el.style.setProperty('--accent-bg', `rgba(${r},${g},${b},0.08)`);
+    el.style.setProperty('--accent-bg-med', `rgba(${r},${g},${b},0.1)`);
+    el.style.setProperty('--accent-bg-strong', `rgba(${r},${g},${b},0.15)`);
+    el.style.setProperty('--accent-border', `rgba(${r},${g},${b},0.2)`);
+    el.style.setProperty('--accent-border-strong', `rgba(${r},${g},${b},0.3)`);
+  }
+
+  function lightenHex(hex, amount) {
+    let r = parseInt(hex.slice(1, 3), 16);
+    let g = parseInt(hex.slice(3, 5), 16);
+    let b = parseInt(hex.slice(5, 7), 16);
+    r = Math.min(255, r + amount);
+    g = Math.min(255, g + amount);
+    b = Math.min(255, b + amount);
+    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  }
+
+  async function saveAccentColor(color) {
+    accentColor = color;
+    applyAccentColor(color);
+    await fetch('/api/settings/accent_color', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: color }),
+    });
+    toast('Accent color updated', 'success');
+  }
+
+  async function scanSessionTypes() {
+    scanningTypes = true;
+    try {
+      const res = await fetch('/api/session-types/scan', { method: 'POST' });
+      const data = await res.json();
+      if (data.added > 0) {
+        toast(`Discovered ${data.added} new process types`, 'success');
+      } else {
+        toast(`Scanned ${data.discovered.length} processes — no new types`, 'info');
+      }
+      await loadSessionTypes();
+    } catch (e) {
+      toast('Scan failed: ' + e.message, 'error');
+    } finally {
+      scanningTypes = false;
+    }
+  }
+
+  function startEditType(t) {
+    editingTypeId = t.id;
+    editTypeColor = t.color;
+    editTypeName = t.display_name;
+  }
+
+  async function saveTypeEdit() {
+    if (!editingTypeId) return;
+    try {
+      await fetch(`/api/session-types/${editingTypeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: editTypeName, color: editTypeColor }),
+      });
+      editingTypeId = null;
+      await loadSessionTypes();
+      toast('Session type updated', 'success');
+    } catch (e) {
+      toast('Failed to save: ' + e.message, 'error');
+    }
+  }
 
   async function loadSessions() {
     try {
@@ -153,6 +265,8 @@
   }
 
   async function init() {
+    await loadSessionTypes();
+    await loadAppSettings();
     await loadSessions();
     await loadWorkspaces();
     loading = false;
@@ -353,6 +467,9 @@
       settingsSessionTab = 'list';
       settingsSessionHostFilter = null;
       if (managedHosts.length === 0) loadManagedHosts();
+    }
+    if (section === 'appearance') {
+      loadSessionTypes();
     }
   }
 
@@ -710,12 +827,6 @@
     }
   }
 
-  function typeClass(type) {
-    if (type === 'claude-code') return 'claude';
-    if (type === 'gsd') return 'gsd';
-    return 'terminal';
-  }
-
   function activeName() {
     return workspaces.find(w => w.id === activeId)?.name || '';
   }
@@ -937,10 +1048,10 @@
           <div class="props-body">
             <div class="prop-section">
               <div class="prop-session-name">
-                <span class="dot {typeClass(session.type)}"></span>
+                <span class="dot" style="background:{typeColor(session.type)};box-shadow:0 0 6px {typeColor(session.type)}"></span>
                 {session.name}
               </div>
-              <span class="prop-type-badge {typeClass(session.type)}">{typeLabel(session.type)}</span>
+              <span class="prop-type-badge" style="background:{typeColor(session.type)}20;color:{typeColor(session.type)}">{typeLabel(session.type)}</span>
             </div>
 
             <div class="prop-divider"></div>
@@ -1243,9 +1354,9 @@
               {/if}
 
               <div class="mgr-legend">
-                <span class="mgr-legend-item"><span class="dot claude"></span> Claude Code</span>
-                <span class="mgr-legend-item"><span class="dot gsd"></span> GSD / Auto</span>
-                <span class="mgr-legend-item"><span class="dot terminal"></span> Terminal</span>
+                <span class="mgr-legend-item"><span class="dot" style="background:{typeColor('claude')};box-shadow:0 0 6px {typeColor('claude')}"></span> Claude Code</span>
+                <span class="mgr-legend-item"><span class="dot" style="background:{typeColor('gsd')};box-shadow:0 0 6px {typeColor('gsd')}"></span> GSD / Auto</span>
+                <span class="mgr-legend-item"><span class="dot" style="background:{typeColor('bash')}"></span> Terminal</span>
               </div>
 
               {#each filteredSessionsByHost() as [hostName, hostSessions]}
@@ -1253,7 +1364,7 @@
                   <div class="mgr-host-label">{hostName}</div>
                   {#each hostSessions as s}
                     <div class="mgr-session-row">
-                      <span class="dot {typeClass(s.type)}"></span>
+                      <span class="dot" style="background:{typeColor(s.type)};box-shadow:0 0 6px {typeColor(s.type)}"></span>
                       <span class="mgr-session-name">{s.name}</span>
                       <span class="mgr-session-meta">
                         {#if s.attached}
@@ -1280,25 +1391,75 @@
               {/each}
             </div>
           {:else if settingsSection === 'appearance'}
-            <div class="settings-placeholder">
-              <span class="settings-placeholder-icon appearance-icon-lg"></span>
-              <span class="settings-placeholder-title">Appearance</span>
-              <span class="settings-placeholder-desc">Session type colors and visual theme configuration.</span>
-              <div class="color-preview">
-                <div class="color-row">
-                  <span class="dot claude"></span>
-                  <span class="color-label">Claude Code</span>
-                  <span class="color-value">#3d8bfd</span>
+            <div class="host-mgr">
+              <!-- Accent Color -->
+              <div class="appearance-section">
+                <div class="appearance-section-title">Accent Color</div>
+                <div class="accent-picker">
+                  {#each [
+                    { color: '#F97316', label: 'Orange' },
+                    { color: '#3d8bfd', label: 'Blue' },
+                    { color: '#7fd962', label: 'Green' },
+                    { color: '#c792ea', label: 'Purple' },
+                    { color: '#56b6c2', label: 'Cyan' },
+                    { color: '#e5c07b', label: 'Gold' },
+                    { color: '#f07178', label: 'Red' },
+                  ] as preset}
+                    <button
+                      class="accent-swatch"
+                      class:active={accentColor === preset.color}
+                      style="background:{preset.color}"
+                      title={preset.label}
+                      onclick={() => saveAccentColor(preset.color)}
+                    ></button>
+                  {/each}
+                  <label class="accent-custom">
+                    <input
+                      type="color"
+                      value={accentColor}
+                      onchange={(e) => saveAccentColor(e.target.value)}
+                      title="Custom color"
+                    />
+                    <span class="accent-custom-label">Custom</span>
+                  </label>
                 </div>
-                <div class="color-row">
-                  <span class="dot gsd"></span>
-                  <span class="color-label">GSD / Auto</span>
-                  <span class="color-value">#c792ea</span>
+              </div>
+
+              <!-- Session Type Colors -->
+              <div class="appearance-section">
+                <div class="appearance-section-hdr">
+                  <span class="appearance-section-title">Session Type Colors</span>
+                  <button class="host-toolbar-btn" onclick={scanSessionTypes} disabled={scanningTypes}>
+                    {scanningTypes ? 'Scanning...' : 'Scan Sessions'}
+                  </button>
                 </div>
-                <div class="color-row">
-                  <span class="dot terminal"></span>
-                  <span class="color-label">Terminal</span>
-                  <span class="color-value">#6b7688</span>
+                <p class="appearance-desc">Colors are assigned by the process running in each tmux pane. Scan to discover new process types.</p>
+                <div class="type-list">
+                  {#each sessionTypes as t}
+                    <div class="type-row">
+                      {#if editingTypeId === t.id}
+                        <input type="color" class="type-color-input" value={editTypeColor}
+                          onchange={(e) => editTypeColor = e.target.value} />
+                        <input class="type-name-input" type="text" bind:value={editTypeName} 
+                          onkeydown={(e) => e.key === 'Enter' && saveTypeEdit()} />
+                        <span class="type-process">{t.process_name}</span>
+                        <div class="type-row-actions">
+                          <button class="mgr-act" onclick={saveTypeEdit}>Save</button>
+                          <button class="mgr-act" onclick={() => editingTypeId = null}>Cancel</button>
+                        </div>
+                      {:else}
+                        <span class="dot" style="background:{t.color};box-shadow:0 0 6px {t.color}"></span>
+                        <span class="type-display-name">{t.display_name}</span>
+                        <span class="type-process">{t.process_name}</span>
+                        <span class="type-color-value">{t.color}</span>
+                        <div class="type-row-actions">
+                          <button class="mgr-act" title="Edit" onclick={() => startEditType(t)}>
+                            <span class="mgr-icon-rename"></span>
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
                 </div>
               </div>
             </div>
@@ -1389,7 +1550,7 @@
               class:current={s.name === showSessionPicker.currentSession}
               onclick={() => assignSession(s)}
             >
-              <span class="dot {typeClass(s.type)}"></span>
+              <span class="dot" style="background:{typeColor(s.type)};box-shadow:0 0 6px {typeColor(s.type)}"></span>
               <span class="picker-name">{s.name}</span>
               <span class="picker-host">{s.host || 'reliant'}</span>
               {#if s.name === showSessionPicker.currentSession}
@@ -1821,9 +1982,6 @@
     font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 500;
     align-self: flex-start;
   }
-  .prop-type-badge.claude { background: var(--claude-bg); color: var(--claude-color); }
-  .prop-type-badge.gsd { background: var(--gsd-bg); color: var(--gsd-color); }
-  .prop-type-badge.terminal { background: var(--terminal-bg); color: var(--text-secondary); }
 
   .prop-divider { height: 1px; background: var(--border); margin: 4px 0; }
 
@@ -1902,9 +2060,6 @@
   .picker-item:hover { background: var(--bg-elevated); }
   .picker-item.current { background: var(--accent-bg); }
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .dot.claude { background: var(--claude-color); box-shadow: var(--claude-glow); }
-  .dot.gsd { background: var(--gsd-color); box-shadow: var(--gsd-glow); }
-  .dot.terminal { background: var(--terminal-color); }
   .picker-name { font-family: 'JetBrains Mono', monospace; font-size: 12px; flex: 1; }
   .picker-host { font-size: 10px; color: var(--text-muted); }
   .picker-current { font-size: 9px; padding: 1px 6px; border-radius: 3px; background: var(--accent-bg-strong); color: var(--accent); }
@@ -2221,16 +2376,69 @@
     font-size: 12px; color: var(--text-muted); line-height: 1.5; max-width: 280px;
   }
 
-  /* Color preview in appearance */
-  .color-preview {
-    display: flex; flex-direction: column; gap: 8px; margin-top: 8px;
-    width: 100%; max-width: 240px;
+  /* Appearance section */
+  .appearance-section { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .appearance-section-title {
+    font-size: 11px; color: var(--text-secondary); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    font-family: 'JetBrains Mono', monospace;
   }
-  .color-row {
-    display: flex; align-items: center; gap: 10px; font-size: 12px;
+  .appearance-section-hdr { display: flex; align-items: center; justify-content: space-between; }
+  .appearance-desc { font-size: 11px; color: var(--text-muted); margin: 0; line-height: 1.5; }
+
+  .accent-picker { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .accent-swatch {
+    width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent;
+    cursor: pointer; transition: all 0.12s;
   }
-  .color-label { color: var(--text-primary); flex: 1; }
-  .color-value { color: var(--text-muted); font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .accent-swatch:hover { transform: scale(1.1); }
+  .accent-swatch.active { border-color: var(--text-primary); box-shadow: 0 0 8px rgba(255,255,255,0.15); }
+  .accent-custom {
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+  }
+  .accent-custom input[type="color"] {
+    width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 6px;
+    background: none; cursor: pointer; padding: 0;
+  }
+  .accent-custom input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+  .accent-custom input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
+  .accent-custom-label { font-size: 10px; color: var(--text-muted); }
+
+  .type-list { display: flex; flex-direction: column; gap: 2px; }
+  .type-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 6px; transition: background 0.1s;
+  }
+  .type-row:hover { background: var(--bg-elevated); }
+  .type-row:hover .type-row-actions { opacity: 1; }
+  .type-display-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: var(--text-primary); min-width: 90px;
+  }
+  .type-process {
+    font-size: 10px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .type-color-value {
+    font-size: 10px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace; margin-left: auto;
+  }
+  .type-row-actions {
+    display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s;
+  }
+  .type-color-input {
+    width: 24px; height: 24px; border: 1px solid var(--border); border-radius: 4px;
+    background: none; cursor: pointer; padding: 0; flex-shrink: 0;
+  }
+  .type-color-input::-webkit-color-swatch-wrapper { padding: 1px; }
+  .type-color-input::-webkit-color-swatch { border: none; border-radius: 3px; }
+  .type-name-input {
+    padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg-base); color: var(--text-primary);
+    font-size: 11px; font-family: 'JetBrains Mono', monospace;
+    width: 120px;
+  }
+  .type-name-input:focus { border-color: var(--accent); outline: none; }
 
   /* Help section */
   .help-section {
