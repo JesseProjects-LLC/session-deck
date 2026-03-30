@@ -118,23 +118,17 @@ async function registerBasicAuth(fastify) {
 
 /**
  * OIDC auth: OpenID Connect with any provider (Entra ID, Authentik, Keycloak, etc.)
+ * Uses openid-client v6 API.
  */
 async function registerOIDC(fastify) {
-  // Dynamic import of openid-client
-  const { Issuer, generators } = await import('openid-client');
+  const oidc = await import('openid-client');
 
   // Discover OIDC provider configuration
-  let client;
+  let oidcConfig;
   try {
-    const issuer = await Issuer.discover(auth.oidcIssuer);
-    fastify.log.info({ issuer: issuer.metadata.issuer }, 'OIDC provider discovered');
-
-    client = new issuer.Client({
-      client_id: auth.oidcClientId,
-      client_secret: auth.oidcClientSecret,
-      redirect_uris: [auth.oidcRedirectUri],
-      response_types: ['code'],
-    });
+    const issuerUrl = new URL(auth.oidcIssuer);
+    oidcConfig = await oidc.discovery(issuerUrl, auth.oidcClientId, auth.oidcClientSecret);
+    fastify.log.info({ issuer: auth.oidcIssuer }, 'OIDC provider discovered');
   } catch (err) {
     fastify.log.error({ err, issuer: auth.oidcIssuer }, 'Failed to discover OIDC provider');
     throw new Error(`OIDC discovery failed: ${err.message}`);
@@ -146,42 +140,63 @@ async function registerOIDC(fastify) {
       return reply.redirect('/');
     }
 
-    const state = generators.state();
-    const nonce = generators.nonce();
+    const state = oidc.randomState();
+    const nonce = oidc.randomNonce();
+    const codeVerifier = oidc.randomPKCECodeVerifier();
+    const codeChallenge = await oidc.calculatePKCECodeChallenge(codeVerifier);
+
     request.session.oidcState = state;
     request.session.oidcNonce = nonce;
+    request.session.oidcCodeVerifier = codeVerifier;
 
-    const authUrl = client.authorizationUrl({
+    const params = new URLSearchParams({
+      redirect_uri: auth.oidcRedirectUri,
       scope: auth.oidcScopes,
       state,
       nonce,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
     });
 
-    reply.redirect(authUrl);
+    const authUrl = oidc.buildAuthorizationUrl(oidcConfig, params);
+    reply.redirect(authUrl.href);
   });
 
   // Callback — handle provider response
   fastify.get('/auth/callback', async (request, reply) => {
     try {
-      const params = client.callbackParams(request.raw);
-      const tokenSet = await client.callback(auth.oidcRedirectUri, params, {
-        state: request.session.oidcState,
-        nonce: request.session.oidcNonce,
+      const currentUrl = new URL(request.url, `${request.protocol}://${request.hostname}`);
+
+      const tokens = await oidc.authorizationCodeGrant(oidcConfig, currentUrl, {
+        pkceCodeVerifier: request.session.oidcCodeVerifier,
+        expectedState: request.session.oidcState,
+        expectedNonce: request.session.oidcNonce,
+        idTokenExpected: true,
       });
 
-      const userinfo = await client.userinfo(tokenSet.access_token);
+      const claims = tokens.claims();
+      let userinfo = { name: claims?.name, email: claims?.email, sub: claims?.sub };
+
+      // Try fetching full userinfo if available
+      try {
+        const info = await oidc.fetchUserInfo(oidcConfig, tokens.access_token, claims.sub);
+        userinfo = {
+          name: info.name || info.preferred_username || info.email || claims?.name || 'User',
+          email: info.email || claims?.email || null,
+          sub: info.sub || claims?.sub,
+        };
+      } catch {
+        // Token claims are sufficient
+        userinfo.name = userinfo.name || 'User';
+      }
 
       request.session.authenticated = true;
-      request.session.user = {
-        name: userinfo.name || userinfo.preferred_username || userinfo.email || 'User',
-        email: userinfo.email || null,
-        method: 'oidc',
-        sub: userinfo.sub,
-      };
+      request.session.user = { ...userinfo, method: 'oidc' };
 
       // Clean up OIDC state
       delete request.session.oidcState;
       delete request.session.oidcNonce;
+      delete request.session.oidcCodeVerifier;
 
       const returnTo = request.session.returnTo || '/';
       delete request.session.returnTo;
@@ -194,16 +209,15 @@ async function registerOIDC(fastify) {
 
   // Logout
   fastify.get('/auth/logout', async (request, reply) => {
-    const idToken = request.session?.idToken;
     request.session.destroy();
 
     // If the provider supports end_session_endpoint, redirect there
-    if (client.issuer.metadata.end_session_endpoint) {
-      const logoutUrl = client.endSessionUrl({
-        id_token_hint: idToken,
-        post_logout_redirect_uri: auth.oidcRedirectUri.replace('/auth/callback', '/'),
+    const serverMeta = oidcConfig.serverMetadata();
+    if (serverMeta.end_session_endpoint) {
+      const logoutUrl = oidc.buildEndSessionUrl(oidcConfig, {
+        post_logout_redirect_uri: auth.oidcRedirectUri.replace('/auth/callback', '/auth/login'),
       });
-      return reply.redirect(logoutUrl);
+      return reply.redirect(logoutUrl.href);
     }
 
     reply.redirect('/auth/login');
