@@ -27,6 +27,7 @@
   let renameValue = $state('');
   let showDeleteConfirm = $state(null);
   let contextMenu = $state(null);
+  let paneMenu = $state(null);
 
   // Toast notifications
   let toasts = $state([]);
@@ -209,9 +210,7 @@
     if (showSessionPicker && activeId) {
       updatePaneSession(activeId, showSessionPicker.path, session.name, session.host || 'reliant');
       showSessionPicker = null;
-      const tmp = activeId;
-      activeId = null;
-      setTimeout(() => { activeId = tmp; }, 50);
+      // No need to cycle activeId — Terminal.svelte reacts to prop changes
     }
   }
 
@@ -300,7 +299,15 @@
     return workspaces.find(w => w.id === activeId)?.name || '';
   }
 
-  function handleWindowClick() { contextMenu = null; }
+  function handleWindowClick() { contextMenu = null; paneMenu = null; }
+
+  function handlePaneContextMenu(e, path, session, host) {
+    paneMenu = { x: e.clientX, y: e.clientY, path, session, host };
+  }
+
+  function nodeIdFromPane(pm) {
+    return `${pm.host}:${pm.session}`;
+  }
 
   // Keyboard shortcuts
   function handleKeydown(e) {
@@ -320,7 +327,7 @@
     }
 
     // Ctrl+P or Cmd+P to toggle properties panel
-    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
       e.preventDefault();
       showPropsPanel = !showPropsPanel;
       return;
@@ -384,8 +391,8 @@
       class="topnav-btn"
       class:active={showPropsPanel}
       onclick={() => showPropsPanel = !showPropsPanel}
-      title="Properties panel (Ctrl+P)"
-    >☰</button>
+      title="Properties panel (Ctrl+Shift+P)"
+    >{showPropsPanel ? 'Info' : 'Info'}</button>
   </nav>
 
   <div class="main-row">
@@ -416,6 +423,7 @@
             onSplit={handleSplitPane}
             onClose={handleClosePane}
             onDrop={handlePaneDrop}
+            onPaneContextMenu={handlePaneContextMenu}
           />
         {/key}
       {:else}
@@ -449,12 +457,12 @@
                 <span class="prop-label">Host</span>
                 <span class="prop-value">{host}</span>
               </div>
-              <div class="prop-row">
-                <span class="prop-label">Windows</span>
+              <div class="prop-row" title="tmux windows in this session">
+                <span class="prop-label">tmux Windows</span>
                 <span class="prop-value">{session.windows ?? '—'}</span>
               </div>
-              <div class="prop-row">
-                <span class="prop-label">Clients</span>
+              <div class="prop-row" title="Number of clients attached to this session">
+                <span class="prop-label">Attached Clients</span>
                 <span class="prop-value">{session.attachedCount ?? '—'}</span>
               </div>
               <div class="prop-row">
@@ -497,13 +505,26 @@
     {/if}
   </div>
 
-  <!-- Context menu -->
+  <!-- Workspace context menu -->
   {#if contextMenu}
     <div class="ctx-menu" style="left:{contextMenu.x}px;top:{contextMenu.y}px">
       <button class="ctx-item" onclick={() => openRename(contextMenu.id)}>✏️ Rename</button>
       <button class="ctx-item" onclick={() => handleDuplicate(contextMenu.id)}>📋 Duplicate</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item danger" onclick={() => openDeleteConfirm(contextMenu.id)}>🗑️ Delete</button>
+    </div>
+  {/if}
+
+  <!-- Pane context menu -->
+  {#if paneMenu}
+    <div class="ctx-menu" style="left:{paneMenu.x}px;top:{paneMenu.y}px">
+      <button class="ctx-item" onclick={() => { openSessionPicker(paneMenu.path, paneMenu.session); paneMenu = null; }}>Change Session</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'h'); paneMenu = null; }}>Split Left/Right</button>
+      <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'v'); paneMenu = null; }}>Split Top/Bottom</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" onclick={() => { handleZoom(nodeIdFromPane(paneMenu), paneMenu.session, paneMenu.host); paneMenu = null; }}>Zoom</button>
+      <button class="ctx-item danger" onclick={() => { handleClosePane(paneMenu.path); paneMenu = null; }}>Close Pane</button>
     </div>
   {/if}
 
@@ -620,7 +641,7 @@
     <span class="spacer"></span>
     <span class="shortcut"><kbd>1-9</kbd> switch</span>
     <span class="shortcut"><kbd>N</kbd> new</span>
-    <span class="shortcut"><kbd>⌃P</kbd> props</span>
+    <span class="shortcut"><kbd>^&#8679;P</kbd> props</span>
     <span class="shortcut"><kbd>Esc</kbd> unzoom</span>
   </footer>
 </div>
@@ -653,8 +674,9 @@
   .pane-count { font-size: 11px; color: #6b7688; font-family: 'JetBrains Mono', monospace; }
 
   .topnav-btn {
-    width: 28px; height: 28px; border-radius: 4px; border: 1px solid #1e2530;
-    background: transparent; color: #6b7688; cursor: pointer; font-size: 12px;
+    padding: 3px 8px; border-radius: 4px; border: 1px solid #1e2530;
+    background: transparent; color: #6b7688; cursor: pointer; font-size: 10px;
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
     display: flex; align-items: center; justify-content: center;
     transition: all 0.12s;
   }

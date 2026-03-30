@@ -4,7 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
   let containerEl;
   let term;
@@ -16,6 +16,8 @@
   let lastRows = 0;
   let suppressResize = false;
   let suppressTimer;
+  let prevSession = $state(session);
+  let prevHost = $state(host);
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
@@ -179,6 +181,18 @@
       term.dispose();
     }
   });
+
+  // Reconnect when session or host changes without remounting
+  $effect(() => {
+    if (term && (session !== prevSession || host !== prevHost)) {
+      prevSession = session;
+      prevHost = host;
+      disconnect();
+      term.clear();
+      term.reset();
+      connect();
+    }
+  });
 </script>
 
 <div class="term-pane" class:focused class:zoomed>
@@ -189,6 +203,11 @@
       e.dataTransfer.setData('text/plain', session);
       e.dataTransfer.effectAllowed = 'move';
       onDragStart?.(session, host);
+    }}
+    oncontextmenu={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onContextMenu?.(e);
     }}
   >    <span class="dot {typeClass(session)}"></span>
     {#if onSessionClick}
@@ -210,8 +229,8 @@
     {/if}
     <span class="tbadge {typeClass(session)}">{typeLabel(session)}</span>
     <div class="pane-actions">
-      <button class="pane-act" title="Split horizontal" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>⊟</button>
-      <button class="pane-act" title="Split vertical" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>⊞</button>
+      <button class="pane-act" title="Split left/right" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>┃</button>
+      <button class="pane-act" title="Split top/bottom" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>━</button>
       <button class="pane-act" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>{zoomed ? '⤡' : '⤢'}</button>
       <button class="pane-act close-act" title="Close pane" onclick={(e) => { e.stopPropagation(); onClose?.(); }}>✕</button>
     </div>

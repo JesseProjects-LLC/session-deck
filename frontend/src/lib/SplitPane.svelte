@@ -14,6 +14,9 @@
     onSplit = () => {},
     onClose = () => {},
     onDrop = () => {},
+    onPaneContextMenu = () => {},
+    parentSplit = null,
+    siblingCount = 0,
   } = $props();
 
   let resizing = $state(false);
@@ -84,12 +87,23 @@
     e.dataTransfer.dropEffect = 'move';
     const sourceSession = e.dataTransfer.types.includes('text/plain') ? true : false;
     if (sourceSession) {
-      dropZone = getDropZone(e, e.currentTarget);
+      const zone = getDropZone(e, e.currentTarget);
+      // Detect swap: if parent is splitting in the same direction as the drop zone,
+      // and there are exactly 2 siblings, show swap indicator
+      const dropDir = (zone === 'left' || zone === 'right') ? 'h' : 'v';
+      if (parentSplit === dropDir && siblingCount === 2) {
+        dropZone = 'swap';
+      } else {
+        dropZone = zone;
+      }
     }
   }
 
-  function handleDragLeave() {
-    dropZone = null;
+  function handleDragLeave(e) {
+    // Only clear if actually leaving the pane (not entering a child)
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      dropZone = null;
+    }
   }
 
   function handleDropOnPane(e) {
@@ -126,6 +140,7 @@
       onSplit={(dir) => onSplit(path, dir)}
       onClose={() => onClose(path)}
       onDragStart={() => {}}
+      onContextMenu={(e) => onPaneContextMenu(e, path, node.session, node.host || 'reliant')}
     />
   </div>
 {:else if node.split && node.children}
@@ -148,6 +163,9 @@
         {onSplit}
         {onClose}
         {onDrop}
+        {onPaneContextMenu}
+        parentSplit={node.split}
+        siblingCount={node.children.length}
       />
       {#if i < node.children.length - 1}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -183,13 +201,12 @@
   /* Drop zone indicators */
   .drop-indicator {
     position: absolute; z-index: 100; pointer-events: none;
-    background: rgba(61, 139, 253, 0.15);
-    border: 2px solid rgba(61, 139, 253, 0.6);
     border-radius: 4px;
     transition: all 0.1s ease;
   }
-  .drop-indicator.left { top: 4px; left: 4px; bottom: 4px; width: 45%; }
-  .drop-indicator.right { top: 4px; right: 4px; bottom: 4px; width: 45%; }
-  .drop-indicator.top { top: 4px; left: 4px; right: 4px; height: 45%; }
-  .drop-indicator.bottom { bottom: 4px; left: 4px; right: 4px; height: 45%; }
+  .drop-indicator.left { top: 4px; left: 4px; bottom: 4px; width: 45%; background: rgba(61, 139, 253, 0.15); border: 2px solid rgba(61, 139, 253, 0.6); }
+  .drop-indicator.right { top: 4px; right: 4px; bottom: 4px; width: 45%; background: rgba(61, 139, 253, 0.15); border: 2px solid rgba(61, 139, 253, 0.6); }
+  .drop-indicator.top { top: 4px; left: 4px; right: 4px; height: 45%; background: rgba(61, 139, 253, 0.15); border: 2px solid rgba(61, 139, 253, 0.6); }
+  .drop-indicator.bottom { bottom: 4px; left: 4px; right: 4px; height: 45%; background: rgba(61, 139, 253, 0.15); border: 2px solid rgba(61, 139, 253, 0.6); }
+  .drop-indicator.swap { top: 4px; left: 4px; right: 4px; bottom: 4px; background: rgba(127, 217, 98, 0.12); border: 2px solid rgba(127, 217, 98, 0.5); }
 </style>
