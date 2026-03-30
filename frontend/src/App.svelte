@@ -305,6 +305,13 @@
     paneMenu = { x: e.clientX, y: e.clientY, path, session, host };
   }
 
+  function getWorkspacesContaining(sessionName) {
+    return workspaces.filter(ws => {
+      const names = getSessionNames(ws.layout);
+      return names.includes(sessionName);
+    });
+  }
+
   function nodeIdFromPane(pm) {
     return `${pm.host}:${pm.session}`;
   }
@@ -326,10 +333,19 @@
       return;
     }
 
-    // Ctrl+P or Cmd+P to toggle properties panel
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
-      e.preventDefault();
-      showPropsPanel = !showPropsPanel;
+    // Shift+1-9 to focus pane by index
+    if (e.shiftKey && e.key >= '!' && e.key <= '(' && !e.ctrlKey && !e.metaKey) {
+      // Shift+1 = '!', Shift+2 = '@', etc — map back to index
+      const shiftDigitMap = { '!': 0, '@': 1, '#': 2, '$': 3, '%': 4, '^': 5, '&': 6, '*': 7, '(': 8 };
+      const idx = shiftDigitMap[e.key];
+      if (idx !== undefined && activeLayout) {
+        const sessions = getSessionNames(activeLayout);
+        if (idx < sessions.length) {
+          e.preventDefault();
+          const sessionName = sessions[idx];
+          focusedId = `reliant:${sessionName}`;
+        }
+      }
       return;
     }
 
@@ -391,7 +407,7 @@
       class="topnav-btn"
       class:active={showPropsPanel}
       onclick={() => showPropsPanel = !showPropsPanel}
-      title="Properties panel (Ctrl+Shift+P)"
+      title="Properties panel"
     >{showPropsPanel ? 'Info' : 'Info'}</button>
   </nav>
 
@@ -458,21 +474,13 @@
                 <span class="prop-label">Host</span>
                 <span class="prop-value">{host}</span>
               </div>
-              <div class="prop-row" title="Number of tmux windows (tabs) in this session">
-                <span class="prop-label">Tabs</span>
-                <span class="prop-value">{session.windows ?? '—'} {session.windows === 1 ? 'window' : 'windows'}</span>
-              </div>
-              <div class="prop-row" title="How many terminal connections are viewing this session">
-                <span class="prop-label">Viewers</span>
-                <span class="prop-value">{session.attachedCount ?? 0} connected</span>
-              </div>
               <div class="prop-row">
-                <span class="prop-label">Attached</span>
+                <span class="prop-label">Status</span>
                 <span class="prop-value">
                   {#if session.attached}
-                    <span class="prop-badge attached">yes</span>
+                    <span class="prop-badge attached">active</span>
                   {:else}
-                    <span class="prop-badge detached">no</span>
+                    <span class="prop-badge detached">detached</span>
                   {/if}
                 </span>
               </div>
@@ -485,7 +493,27 @@
             <div class="prop-divider"></div>
 
             <div class="prop-section">
-              <span class="prop-section-title">Workspace</span>
+              <span class="prop-section-title">Used in workspaces</span>
+              {#each getWorkspacesContaining(session.name) as ws}
+                <button
+                  class="prop-ws-link"
+                  class:current={ws.id === activeId}
+                  onclick={() => switchWorkspace(ws.id)}
+                  title="Switch to {ws.name}"
+                >
+                  {ws.name}
+                  {#if ws.id === activeId}<span class="prop-current-tag">current</span>{/if}
+                </button>
+              {:else}
+                <span class="prop-value dim">Not in any workspace</span>
+              {/each}
+            </div>
+
+
+            <div class="prop-divider"></div>
+
+            <div class="prop-section">
+              <span class="prop-section-title">Current workspace</span>
               <div class="prop-row">
                 <span class="prop-label">Name</span>
                 <span class="prop-value">{activeName()}</span>
@@ -640,10 +668,12 @@
     <span class="sep-dot">·</span>
     <span>{sessions.length} sessions</span>
     <span class="spacer"></span>
-    <span class="shortcut"><kbd>1-9</kbd> switch</span>
-    <span class="shortcut"><kbd>N</kbd> new</span>
-    <span class="shortcut"><kbd>^&#8679;P</kbd> props</span>
-    <span class="shortcut"><kbd>Esc</kbd> unzoom</span>
+    <button class="shortcut-btn" onclick={() => { if (workspaces.length > 1) switchWorkspace(workspaces[1]?.id); }}><kbd>1-9</kbd> workspace</button>
+    <button class="shortcut-btn" onclick={openNewWsModal}><kbd>N</kbd> new workspace</button>
+    <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>Info</kbd> properties</button>
+    {#if zoomedPane}
+      <button class="shortcut-btn" onclick={() => zoomedPane = null}><kbd>Esc</kbd> unzoom</button>
+    {/if}
   </footer>
 </div>
 
@@ -740,6 +770,17 @@
   }
   .prop-badge.attached { background: rgba(127,217,98,0.1); color: #7fd962; }
   .prop-badge.detached { background: rgba(240,113,120,0.1); color: #f07178; }
+
+  .prop-ws-link {
+    width: 100%; padding: 4px 8px; border-radius: 4px; border: 1px solid #1e2530;
+    background: transparent; color: #c5cdd9; font-size: 11px; text-align: left;
+    cursor: pointer; font-family: 'JetBrains Mono', monospace;
+    display: flex; align-items: center; gap: 6px; transition: all 0.1s;
+  }
+  .prop-ws-link:hover { border-color: #3d8bfd; color: #3d8bfd; }
+  .prop-ws-link.current { border-color: rgba(61,139,253,0.3); background: rgba(61,139,253,0.05); }
+  .prop-current-tag { font-size: 8px; padding: 0 4px; border-radius: 2px; background: rgba(61,139,253,0.15); color: #3d8bfd; }
+  .prop-value.dim { color: #3d4450; font-style: italic; font-size: 10px; }
 
   /* Context menu */
   .ctx-menu {
@@ -857,7 +898,13 @@
   }
   .ws-name { color: #3d8bfd; }
   .sep-dot { color: #1e2530; }
-  .shortcut { display: flex; align-items: center; gap: 3px; }
+  .shortcut-btn {
+    display: flex; align-items: center; gap: 3px;
+    background: none; border: none; color: #3d4450; cursor: pointer;
+    font-size: 10px; font-family: 'JetBrains Mono', monospace;
+    padding: 0 4px; border-radius: 2px; transition: color 0.1s;
+  }
+  .shortcut-btn:hover { color: #6b7688; }
   .statusbar kbd {
     font-size: 9px; padding: 0 3px; border-radius: 2px;
     background: #0a0e14; border: 1px solid #1e2530; color: #6b7688;
