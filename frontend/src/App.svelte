@@ -297,6 +297,9 @@
 
     loading = false;
 
+    // Restore workspace/pane from URL hash
+    restoreFromHash();
+
     // Detect first-run: no workspaces = show setup wizard
     if (workspaces.length === 0) {
       const hostRes = await fetch('/api/managed-hosts/count');
@@ -317,9 +320,41 @@
     showSessionPicker = null;
     contextMenu = null;
     setActive(id);
+    updateUrlHash(id, null);
   }
 
-  function handleFocus(id) { focusedId = id; }
+  function handleFocus(id) {
+    focusedId = id;
+    updateUrlHash(activeId, id);
+  }
+
+  function updateUrlHash(wsId, paneId) {
+    const ws = workspaces.find(w => w.id === wsId);
+    if (!ws) return;
+    const parts = [`ws=${encodeURIComponent(ws.name)}`];
+    if (paneId) parts.push(`pane=${encodeURIComponent(paneId)}`);
+    const hash = parts.join('&');
+    if (window.location.hash !== `#${hash}`) {
+      history.replaceState(null, '', `#${hash}`);
+    }
+  }
+
+  function restoreFromHash() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const params = new URLSearchParams(hash);
+    const wsName = params.get('ws');
+    const paneId = params.get('pane');
+    if (wsName) {
+      const ws = workspaces.find(w => w.name === wsName);
+      if (ws && ws.id !== activeId) {
+        setActive(ws.id);
+      }
+    }
+    if (paneId) {
+      focusedId = paneId;
+    }
+  }
 
   function handleZoom(id, session, host) {
     if (zoomedPane && zoomedPane.id === id) {
@@ -777,7 +812,7 @@
 
     // Workspace switching
     workspaces.forEach((ws, i) => {
-      cmds.push({ id: `ws-${ws.id}`, label: `Switch to workspace: ${ws.name}`, hint: `${i + 1}`, action: () => switchWorkspace(ws.id), category: 'Workspace' });
+      cmds.push({ id: `ws-${ws.id}`, label: `Switch to workspace: ${ws.name}`, hint: `Alt+${i + 1}`, action: () => switchWorkspace(ws.id), category: 'Workspace' });
     });
     cmds.push({ id: 'ws-new', label: 'New workspace', hint: 'N', action: openNewWsModal, category: 'Workspace' });
 
@@ -963,8 +998,8 @@
       return;
     }
 
-    // 1-9 to switch workspaces
-    if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // Alt+1-9 to switch workspaces
+    if (e.altKey && e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey) {
       const idx = parseInt(e.key) - 1;
       if (idx < workspaces.length) {
         e.preventDefault();
@@ -973,12 +1008,12 @@
       return;
     }
 
-    // Shift+1-9 to focus pane by index
-    if (e.shiftKey && e.key >= '!' && e.key <= '(' && !e.ctrlKey && !e.metaKey) {
-      // Shift+1 = '!', Shift+2 = '@', etc — map back to index
-      const shiftDigitMap = { '!': 0, '@': 1, '#': 2, '$': 3, '%': 4, '^': 5, '&': 6, '*': 7, '(': 8 };
-      const idx = shiftDigitMap[e.key];
-      if (idx !== undefined && activeLayout) {
+    // Alt+Shift+1-9 to focus pane by index
+    // Alt+Shift+1-9 to focus pane by index
+    if (e.altKey && e.shiftKey && (e.key >= '1' && e.key <= '9' || e.code?.startsWith('Digit'))) {
+      const digit = e.code ? parseInt(e.code.replace('Digit', '')) : parseInt(e.key);
+      const idx = digit - 1;
+      if (!isNaN(idx) && idx >= 0 && activeLayout) {
         const sessions = getSessionNames(activeLayout);
         if (idx < sessions.length) {
           e.preventDefault();
@@ -1084,11 +1119,10 @@
           class:active={ws.id === activeId}
           onclick={() => switchWorkspace(ws.id)}
           oncontextmenu={(e) => openContextMenu(e, ws.id)}
-          title="{ws.description || ws.name} ({i + 1})"
+          title="{ws.description || ws.name} (Alt+{i + 1})"
         >
-          <span class="ws-num">{i + 1}</span>
           {ws.name}
-          <span class="cnt">{countPanes(ws.layout)}</span>
+          <span class="cnt" title="{countPanes(ws.layout)} panes">{countPanes(ws.layout)}p</span>
         </button>
       {/each}
       <button class="wt add-btn" onclick={openNewWsModal} title="New workspace (N)">+</button>
@@ -1584,13 +1618,13 @@
             <div class="help-section">
               <div class="help-group">
                 <span class="help-group-title">Workspace Navigation</span>
-                <div class="help-row"><kbd>1</kbd>–<kbd>9</kbd><span>Switch workspace</span></div>
+                <div class="help-row"><kbd>Alt+1</kbd>–<kbd>9</kbd><span>Switch workspace</span></div>
                 <div class="help-row"><kbd>N</kbd><span>New workspace</span></div>
                 <div class="help-row"><kbd>I</kbd><span>Toggle properties panel</span></div>
               </div>
               <div class="help-group">
                 <span class="help-group-title">Pane Control</span>
-                <div class="help-row"><kbd>Shift+1</kbd>–<kbd>9</kbd><span>Focus pane by index</span></div>
+                <div class="help-row"><kbd>Alt+Shift+1</kbd>–<kbd>9</kbd><span>Focus pane by index</span></div>
                 <div class="help-row"><kbd>Ctrl+Shift+F</kbd><span>Zoom / unzoom pane</span></div>
                 <div class="help-row"><kbd>Esc</kbd><span>Unzoom / close menu</span></div>
               </div>
@@ -1990,7 +2024,7 @@
       const idx = workspaces.findIndex(w => w.id === activeId);
       const next = (idx + 1) % workspaces.length;
       switchWorkspace(workspaces[next].id);
-    }}><kbd>1-9</kbd> workspace</button>
+    }}><kbd>Alt+1-9</kbd> workspace</button>
     <button class="shortcut-btn" onclick={openNewWsModal}><kbd>N</kbd> new workspace</button>
     <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>I</kbd> properties</button>
     <button class="shortcut-btn" onclick={() => {
@@ -2083,8 +2117,6 @@
   .wt:hover { color: var(--text-primary); }
   .wt.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-border); }
   .wt .cnt { font-size: 10px; color: var(--text-muted); }
-  .wt .ws-num { font-size: 9px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; min-width: 10px; }
-  .wt.active .ws-num { color: rgba(249,115,22,0.5); }
   .add-btn { font-size: 16px; padding: 3px 10px; color: var(--text-muted); }
   .add-btn:hover { color: var(--accent); }
   .pane-count { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }

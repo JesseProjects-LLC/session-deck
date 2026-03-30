@@ -24,3 +24,13 @@ tmux rename-session -t gsd-freelance gsd-placer
 tmux rename-session -t gsd-webapp gsd-onsite
 # placer was killed intentionally (no longer needed)
 ```
+
+## Demo Sessions to Kill
+```bash
+tmux kill-session -t monitoring
+tmux kill-session -t editor
+tmux kill-session -t logs
+tmux kill-session -t docker-mgr
+tmux kill-session -t python-dev
+tmux kill-session -t node-app
+```
