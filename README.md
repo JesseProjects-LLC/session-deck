@@ -73,6 +73,71 @@ Backend runs on `:7890`, frontend dev server on `:5173` with API proxy.
 | `SESSION_DECK_HOST` | `0.0.0.0` | Bind address |
 | `SESSION_DECK_LOG_LEVEL` | `info` | Log level (fatal/error/warn/info/debug/trace) |
 | `SESSION_DECK_DB_PATH` | `./data/session-deck.db` | SQLite database path |
+| `SESSION_DECK_AUTH` | `none` | Auth method: `none`, `basic`, or `oidc` |
+| `SESSION_DECK_AUTH_USER` | — | Username (basic auth) |
+| `SESSION_DECK_AUTH_PASS` | — | Password (basic auth) |
+| `SESSION_DECK_OIDC_ISSUER` | — | OIDC issuer URL (e.g. Entra, Authentik) |
+| `SESSION_DECK_OIDC_CLIENT_ID` | — | OIDC client ID |
+| `SESSION_DECK_OIDC_CLIENT_SECRET` | — | OIDC client secret |
+| `SESSION_DECK_OIDC_REDIRECT_URI` | — | OIDC callback URL |
+| `SESSION_DECK_OIDC_SCOPES` | `openid profile email` | OIDC scopes |
+| `SESSION_DECK_TRUSTED_NETWORKS` | — | CIDRs to bypass auth (e.g. `192.168.0.0/16`) |
+| `SESSION_DECK_SESSION_SECRET` | — | Session cookie secret (set in production!) |
+| `SESSION_DECK_SESSION_MAX_AGE` | `86400` | Session cookie max age in seconds |
+
+### Authentication
+
+Session Deck supports three auth modes:
+
+#### No Auth (default)
+```bash
+SESSION_DECK_AUTH=none  # or just don't set it
+```
+
+#### Basic Auth
+```bash
+SESSION_DECK_AUTH=basic
+SESSION_DECK_AUTH_USER=admin
+SESSION_DECK_AUTH_PASS=your-secure-password
+SESSION_DECK_SESSION_SECRET=random-32-char-string
+```
+
+#### OpenID Connect (Entra ID, Authentik, Keycloak, etc.)
+
+**Microsoft Entra ID example:**
+
+1. In Azure Portal → App registrations → New registration
+2. Set redirect URI to `https://your-host/auth/callback` (Web platform)
+3. Create a client secret under Certificates & Secrets
+4. Note your tenant ID from the Overview page
+
+```bash
+SESSION_DECK_AUTH=oidc
+SESSION_DECK_OIDC_ISSUER=https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0
+SESSION_DECK_OIDC_CLIENT_ID=your-client-id
+SESSION_DECK_OIDC_CLIENT_SECRET=your-client-secret
+SESSION_DECK_OIDC_REDIRECT_URI=https://deck.hha.sh/auth/callback
+SESSION_DECK_SESSION_SECRET=random-32-char-string
+```
+
+**Authentik / Keycloak example:**
+```bash
+SESSION_DECK_AUTH=oidc
+SESSION_DECK_OIDC_ISSUER=https://auth.example.com/application/o/session-deck/
+SESSION_DECK_OIDC_CLIENT_ID=your-client-id
+SESSION_DECK_OIDC_CLIENT_SECRET=your-client-secret
+SESSION_DECK_OIDC_REDIRECT_URI=https://deck.example.com/auth/callback
+SESSION_DECK_SESSION_SECRET=random-32-char-string
+```
+
+#### Trusted Networks (bypass auth)
+
+Allow unauthenticated access from specific networks:
+```bash
+SESSION_DECK_TRUSTED_NETWORKS=192.168.0.0/16,10.0.0.0/8
+```
+
+This is useful when running behind a VPN or on a trusted LAN — users from those networks skip the login page entirely.
 
 ### Run as a systemd Service
 

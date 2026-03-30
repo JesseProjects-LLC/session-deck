@@ -8,6 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import config from './lib/config.js';
 import { getDb, closeDb } from './lib/db.js';
+import { registerAuth } from './lib/auth.js';
 import healthRoutes from './routes/health.js';
 import hostsRoutes from './routes/hosts.js';
 import managedHostsRoutes from './routes/managed-hosts.js';
@@ -24,6 +25,7 @@ export async function buildServer() {
         ? { target: 'pino-pretty', options: { colorize: true } }
         : undefined,
     },
+    trustProxy: true, // trust X-Forwarded-For from reverse proxy (Traefik, nginx)
   });
 
   // CORS — allow any origin on LAN
@@ -62,14 +64,21 @@ export async function buildServer() {
     decorateReply: false,
   });
 
-  // SPA fallback — serve index.html for unmatched routes (not /api, not /playground)
+  // SPA fallback — serve index.html for unmatched routes (not /api, not /playground, not /auth)
   fastify.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/') || request.url.startsWith('/playground/')) {
+    if (request.url.startsWith('/api/') || request.url.startsWith('/playground/') || request.url.startsWith('/auth/')) {
       reply.code(404).send({ error: 'Not found' });
     } else {
       reply.sendFile('index.html', frontendDist);
     }
   });
+
+  // Form body parsing (for login form POST)
+  const formbody = await import('@fastify/formbody');
+  await fastify.register(formbody.default);
+
+  // Authentication (must be before routes)
+  await registerAuth(fastify);
 
   // Routes
   await fastify.register(healthRoutes);

@@ -40,6 +40,9 @@
   let sessionMgrLoading = $state(false);
   let hosts = $state([]);
 
+  // Auth user info
+  let authUser = $state(null); // { name, email, method } or null
+
   // Settings menu/panel
   let showSettingsMenu = $state(false);
   let settingsSection = $state(null); // 'servers' | 'sessions' | 'appearance' | 'help' | null
@@ -283,6 +286,13 @@
     await loadAppSettings();
     await loadSessions();
     await loadWorkspaces();
+
+    // Check if user is authenticated (auth might be disabled)
+    try {
+      const res = await fetch('/auth/me');
+      if (res.ok) authUser = await res.json();
+    } catch { /* auth not enabled */ }
+
     loading = false;
 
     // Detect first-run: no workspaces = show setup wizard
@@ -1084,6 +1094,10 @@
       <span class="pane-count zoom-indicator">ZOOM: {zoomedPane.session}</span>
     {:else if activeLayout}
       <span class="pane-count">{countPanes(activeLayout)} panes</span>
+    {/if}
+    {#if authUser}
+      <span class="auth-user">{authUser.name}</span>
+      <a class="auth-logout" href="/auth/logout" title="Sign out">Sign out</a>
     {/if}
     <button
       class="topnav-btn"
@@ -2074,6 +2088,13 @@
   }
   .topnav-btn:hover { border-color: var(--accent); color: var(--text-primary); }
   .topnav-btn.active { border-color: var(--accent); background: var(--accent-bg-med); color: var(--accent); }
+
+  .auth-user { font-size: 10px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+  .auth-logout {
+    font-size: 10px; color: var(--text-muted); text-decoration: none;
+    padding: 2px 6px; border-radius: 3px; transition: color 0.1s;
+  }
+  .auth-logout:hover { color: var(--danger); }
 
   .main-row { flex: 1; display: flex; overflow: hidden; }
   .content { flex: 1; overflow: hidden; padding: 3px; }
