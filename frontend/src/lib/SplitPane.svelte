@@ -15,6 +15,7 @@
     onClose = () => {},
     onDrop = () => {},
     onPaneContextMenu = () => {},
+    getTypeInfo = () => ({ color: '#6b7688', label: 'TERM' }),
     parentSplit = null,
     siblingCount = 0,
   } = $props();
@@ -136,6 +137,9 @@
       host={node.host || 'reliant'}
       focused={focusedId === nodeId(node)}
       zoomed={zoomedId === nodeId(node)}
+      sessionType={node.session}
+      sessionTypeColor={getTypeInfo(node.session).color}
+      sessionTypeLabel={getTypeInfo(node.session).label}
       onSessionClick={() => handleSessionClick(node.session)}
       onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
       onSplit={(dir) => onSplit(path, dir)}
@@ -165,6 +169,7 @@
         {onClose}
         {onDrop}
         {onPaneContextMenu}
+        {getTypeInfo}
         parentSplit={node.split}
         siblingCount={node.children.length}
       />

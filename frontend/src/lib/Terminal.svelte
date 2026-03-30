@@ -5,7 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { ClipboardAddon } from '@xterm/addon-clipboard';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
   let containerEl;
   let term;
@@ -23,20 +23,6 @@
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
-
-  function typeClass(sessionName) {
-    // This is a rough heuristic — proper type comes from the API
-    if (sessionName.startsWith('gsd-')) return 'gsd';
-    if (['main', 'homelab', 'onsite'].includes(sessionName)) return 'claude';
-    return 'terminal';
-  }
-
-  function typeLabel(sessionName) {
-    const tc = typeClass(sessionName);
-    if (tc === 'claude') return 'AI';
-    if (tc === 'gsd') return 'AUTO';
-    return 'TERM';
-  }
 
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
@@ -240,7 +226,7 @@
       e.stopPropagation();
       onContextMenu?.(e);
     }}
-  >    <span class="dot {typeClass(session)}"></span>
+  >    <span class="dot" style="background:{sessionTypeColor};box-shadow:0 0 6px {sessionTypeColor}"></span>
     {#if onSessionClick}
       <button class="sname clickable" onclick={(e) => { e.stopPropagation(); onSessionClick(); }} title="Click to change session">{session}</button>
     {:else}
@@ -258,7 +244,7 @@
     {:else if error}
       <span class="conn-badge error">{error}</span>
     {/if}
-    <span class="tbadge {typeClass(session)}">{typeLabel(session)}</span>
+    <span class="tbadge" style="background:{sessionTypeColor}20;color:{sessionTypeColor}">{sessionTypeLabel}</span>
     <div class="pane-actions">
       <button class="pane-act split-btn" title="Split left | right" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>
         <span class="split-icon-h"></span>
@@ -290,8 +276,8 @@
     transition: border-color 0.15s;
   }
   .term-pane:hover { border-color: #1e2530; }
-  .term-pane.focused { border-color: #3d8bfd; }
-  .term-pane.zoomed { border-color: #7fd962; }
+  .term-pane.focused { border-color: var(--accent, #F97316); }
+  .term-pane.zoomed { border-color: var(--success, #7fd962); }
 
   .pane-hdr {
     display: flex; align-items: center; gap: 6px;
@@ -306,19 +292,16 @@
   .pane-hdr:active { cursor: grabbing; }
 
   .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .dot.claude { background: #3d8bfd; box-shadow: 0 0 6px #3d8bfd; }
-  .dot.gsd { background: #c792ea; box-shadow: 0 0 6px #c792ea; }
-  .dot.terminal { background: #6b7688; }
 
   .sname { color: #c5cdd9; font-weight: 500; font-family: 'JetBrains Mono', monospace; font-size: 11px; border: none; background: none; padding: 0; cursor: default; }
   .sname.clickable { cursor: pointer; border-bottom: 1px dashed #3d4450; }
-  .sname.clickable:hover { color: #3d8bfd; border-bottom-color: #3d8bfd; }
+  .sname.clickable:hover { color: var(--accent, #F97316); border-bottom-color: var(--accent, #F97316); }
   .hname { color: #3d4450; font-size: 10px; }
   .spacer { flex: 1; }
 
   .fbadge {
     font-size: 9px; padding: 1px 6px; border-radius: 3px;
-    background: rgba(61,139,253,0.15); color: #3d8bfd;
+    background: var(--accent-bg-strong, rgba(249,115,22,0.15)); color: var(--accent, #F97316);
     font-weight: 600; letter-spacing: 0.5px;
   }
   .conn-badge {
@@ -329,9 +312,6 @@
   .conn-badge.error { background: rgba(240,113,120,0.1); color: #f07178; }
 
   .tbadge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 500; }
-  .tbadge.claude { background: rgba(61,139,253,0.1); color: #3d8bfd; }
-  .tbadge.gsd { background: rgba(199,146,234,0.1); color: #c792ea; }
-  .tbadge.terminal { background: rgba(107,118,136,0.1); color: #6b7688; }
 
   .pane-actions { display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
   .term-pane:hover .pane-actions { opacity: 1; }

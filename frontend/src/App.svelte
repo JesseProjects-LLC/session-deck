@@ -64,6 +64,11 @@
   let editTypeName = $state('');
   let scanningTypes = $state(false);
 
+  // Command palette
+  let showCommandPalette = $state(false);
+  let paletteQuery = $state('');
+  let paletteIndex = $state(0);
+
   // Setup wizard (first-run)
   let showSetupWizard = $state(false);
   let setupStep = $state(1); // 1: welcome/import, 2: test hosts, 3: create workspace
@@ -122,6 +127,15 @@
 
   function typeColor(type) {
     return sessionTypeMap[type]?.color || '#6b7688';
+  }
+
+  function getTypeInfo(sessionName) {
+    // Find the session in our sessions list to get its detected type
+    const s = sessions.find(s => s.name === sessionName);
+    const type = s?.type || 'bash';
+    const color = typeColor(type);
+    const label = (sessionTypeMap[type]?.display_name || type || 'TERM').toUpperCase().slice(0, 6);
+    return { color, label, type };
   }
 
   let refreshTimer;
@@ -744,6 +758,79 @@
     showSetupWizard = false;
   }
 
+  // --- Command palette ---
+
+  function getPaletteCommands() {
+    const cmds = [];
+
+    // Workspace switching
+    workspaces.forEach((ws, i) => {
+      cmds.push({ id: `ws-${ws.id}`, label: `Switch to workspace: ${ws.name}`, hint: `${i + 1}`, action: () => switchWorkspace(ws.id), category: 'Workspace' });
+    });
+    cmds.push({ id: 'ws-new', label: 'New workspace', hint: 'N', action: openNewWsModal, category: 'Workspace' });
+
+    // Pane actions
+    if (focusedId) {
+      cmds.push({ id: 'zoom', label: zoomedPane ? 'Unzoom pane' : 'Zoom focused pane', hint: 'Ctrl+Shift+F', action: () => {
+        if (zoomedPane) { zoomedPane = null; }
+        else if (focusedId) {
+          const [h, ...r] = focusedId.split(':');
+          const s = r.join(':');
+          if (s && !s.startsWith('split-')) handleZoom(focusedId, s, h);
+        }
+      }, category: 'Pane' });
+    }
+    cmds.push({ id: 'props', label: showPropsPanel ? 'Hide properties panel' : 'Show properties panel', hint: 'I', action: () => showPropsPanel = !showPropsPanel, category: 'Pane' });
+
+    // Session actions
+    sessions.forEach(s => {
+      cmds.push({ id: `focus-${s.host}-${s.name}`, label: `Focus session: ${s.name}`, hint: s.host, action: () => { focusedId = `${s.host || 'reliant'}:${s.name}`; }, category: 'Session' });
+    });
+    cmds.push({ id: 'session-mgr', label: 'Manage sessions', action: openSessionManager, category: 'Session' });
+
+    // Settings
+    cmds.push({ id: 'settings-servers', label: 'Settings: Servers', action: () => openSettingsSection('servers'), category: 'Settings' });
+    cmds.push({ id: 'settings-sessions', label: 'Settings: Sessions', action: () => openSettingsSection('sessions'), category: 'Settings' });
+    cmds.push({ id: 'settings-appearance', label: 'Settings: Appearance', action: () => openSettingsSection('appearance'), category: 'Settings' });
+    cmds.push({ id: 'settings-help', label: 'Settings: Help', action: () => openSettingsSection('help'), category: 'Settings' });
+
+    return cmds;
+  }
+
+  function filteredPaletteCommands() {
+    const cmds = getPaletteCommands();
+    if (!paletteQuery.trim()) return cmds;
+    const q = paletteQuery.toLowerCase();
+    return cmds.filter(c => c.label.toLowerCase().includes(q) || (c.category || '').toLowerCase().includes(q));
+  }
+
+  function openCommandPalette() {
+    paletteQuery = '';
+    paletteIndex = 0;
+    showCommandPalette = true;
+  }
+
+  function executePaletteCommand(cmd) {
+    showCommandPalette = false;
+    cmd.action();
+  }
+
+  function handlePaletteKeydown(e) {
+    const cmds = filteredPaletteCommands();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      paletteIndex = Math.min(paletteIndex + 1, cmds.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      paletteIndex = Math.max(paletteIndex - 1, 0);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (cmds[paletteIndex]) executePaletteCommand(cmds[paletteIndex]);
+    } else if (e.key === 'Escape') {
+      showCommandPalette = false;
+    }
+  }
+
   async function testAllHosts() {
     const enabled = managedHosts.filter(h => h.enabled);
     for (const h of enabled) hostTesting = { ...hostTesting, [h.id]: true };
@@ -853,7 +940,14 @@
     // Don't handle when typing in inputs or modals are open
     const tag = e.target?.tagName?.toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
-    if (showNewWsModal || showRenameModal || showDeleteConfirm || showSessionPicker) return;
+    if (showNewWsModal || showRenameModal || showDeleteConfirm || showSessionPicker || showCommandPalette) return;
+
+    // Ctrl+K to open command palette
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      openCommandPalette();
+      return;
+    }
 
     // 1-9 to switch workspaces
     if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -912,6 +1006,7 @@
 
     // Escape to close panels/menus/unzoom
     if (e.key === 'Escape') {
+      if (showCommandPalette) { showCommandPalette = false; return; }
       if (settingsSection) { settingsSection = null; return; }
       if (showSettingsMenu) { showSettingsMenu = false; return; }
       if (zoomedPane) { zoomedPane = null; return; }
@@ -1009,6 +1104,8 @@
             host={zoomedPane.host}
             focused={true}
             zoomed={true}
+            sessionTypeColor={getTypeInfo(zoomedPane.session).color}
+            sessionTypeLabel={getTypeInfo(zoomedPane.session).label}
             onZoom={() => { zoomedPane = null; }}
             onSessionClick={() => openSessionPicker([], zoomedPane.session)}
             onContextMenu={(e) => handlePaneContextMenu(e, [], zoomedPane.session, zoomedPane.host)}
@@ -1028,6 +1125,7 @@
             onClose={handleClosePane}
             onDrop={handlePaneDrop}
             onPaneContextMenu={handlePaneContextMenu}
+            {getTypeInfo}
           />
         {/key}
       {:else}
@@ -1688,6 +1786,44 @@
     </div>
   {/if}
 
+  <!-- Command palette -->
+  {#if showCommandPalette}
+    <div class="palette-overlay" onclick={() => showCommandPalette = false}>
+      <div class="palette" onclick={(e) => e.stopPropagation()}>
+        <div class="palette-input-row">
+          <span class="palette-icon">⌘</span>
+          <input
+            class="palette-input"
+            type="text"
+            placeholder="Type a command..."
+            bind:value={paletteQuery}
+            onkeydown={handlePaletteKeydown}
+            oninput={() => paletteIndex = 0}
+            autofocus
+          />
+        </div>
+        <div class="palette-results">
+          {#each filteredPaletteCommands() as cmd, i}
+            <button
+              class="palette-item"
+              class:active={i === paletteIndex}
+              onclick={() => executePaletteCommand(cmd)}
+              onmouseenter={() => paletteIndex = i}
+            >
+              <span class="palette-category">{cmd.category}</span>
+              <span class="palette-label">{cmd.label}</span>
+              {#if cmd.hint}
+                <kbd class="palette-hint">{cmd.hint}</kbd>
+              {/if}
+            </button>
+          {:else}
+            <div class="palette-empty">No matching commands</div>
+          {/each}
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- Setup wizard (first-run) -->
   {#if showSetupWizard}
     <div class="setup-overlay">
@@ -1844,6 +1980,7 @@
     {#if zoomedPane}
       <button class="shortcut-btn" onclick={() => zoomedPane = null}><kbd>Esc</kbd> unzoom</button>
     {/if}
+    <button class="shortcut-btn" onclick={openCommandPalette}><kbd>Ctrl+K</kbd> commands</button>
   </footer>
 </div>
 
@@ -2720,4 +2857,52 @@
     font-family: 'JetBrains Mono', monospace;
   }
   .setup-preset-desc { font-size: 10px; color: var(--text-muted); }
+
+  /* Command palette */
+  .palette-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(10,14,20,0.6); backdrop-filter: blur(4px);
+    z-index: 5500; display: flex; align-items: flex-start; justify-content: center;
+    padding-top: 15vh;
+  }
+  .palette {
+    width: 520px; max-width: 90vw; max-height: 60vh;
+    background: var(--bg-raised); border: 1px solid var(--border-strong);
+    border-radius: 12px; box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .palette-input-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .palette-icon { font-size: 14px; color: var(--text-muted); }
+  .palette-input {
+    flex: 1; background: none; border: none; color: var(--text-primary);
+    font-size: 15px; font-family: 'DM Sans', sans-serif; outline: none;
+  }
+  .palette-input::placeholder { color: var(--text-muted); }
+  .palette-results {
+    flex: 1; overflow-y: auto; padding: 4px;
+  }
+  .palette-item {
+    width: 100%; padding: 8px 12px; border: none; background: transparent;
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    border-radius: 6px; font-size: 13px; text-align: left;
+    color: var(--text-primary); transition: background 0.08s;
+  }
+  .palette-item:hover, .palette-item.active { background: var(--bg-elevated); }
+  .palette-category {
+    font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+    letter-spacing: 0.5px; font-weight: 600; min-width: 60px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .palette-label { flex: 1; }
+  .palette-hint {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    background: var(--bg-base); border: 1px solid var(--border);
+    color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;
+  }
+  .palette-empty {
+    padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;
+  }
 </style>
