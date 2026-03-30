@@ -30,8 +30,7 @@
   let paneMenu = $state(null);
 
   // Session management modals
-  let showSessionManager = $state(false);
-  let sessionMgrTab = $state('list'); // 'list' | 'create'
+  let showSessionManager = $state(false); // kept for openSessionManager redirect
   let newSessionName = $state('');
   let newSessionHost = $state('reliant');
   let newSessionDir = $state('');
@@ -656,50 +655,10 @@
   // --- Session management ---
 
   function openSessionManager() {
-    sessionMgrTab = 'list';
-    newSessionName = '';
-    newSessionHost = 'reliant';
-    newSessionDir = '';
-    showSessionManager = true;
-  }
-
-  function sessionsByHost() {
-    const grouped = {};
-    for (const s of sessions) {
-      const h = s.host || 'reliant';
-      if (!grouped[h]) grouped[h] = [];
-      grouped[h].push(s);
-    }
-    // Sort hosts: local first, then alphabetical
-    const sorted = Object.entries(grouped).sort(([a], [b]) => {
-      if (a === 'reliant') return -1;
-      if (b === 'reliant') return 1;
-      return a.localeCompare(b);
-    });
-    return sorted;
-  }
-
-  async function handleCreateSession() {
-    if (!newSessionName.trim()) return;
-    sessionMgrLoading = true;
-    try {
-      const res = await fetch(`/api/sessions/${newSessionHost}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newSessionName.trim(), startDir: newSessionDir.trim() || undefined }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to create session');
-      toast(`Created session "${newSessionName.trim()}" on ${newSessionHost}`, 'success');
-      newSessionName = '';
-      newSessionDir = '';
-      sessionMgrTab = 'list';
-      await loadSessions();
-    } catch (e) {
-      toast(e.message, 'error');
-    } finally {
-      sessionMgrLoading = false;
-    }
+    settingsSessionTab = 'list';
+    settingsSessionHostFilter = null;
+    if (managedHosts.length === 0) loadManagedHosts();
+    openSettingsSection('sessions');
   }
 
   function openRenameSessionModal(name, host) {
@@ -1374,8 +1333,9 @@
               <div class="help-about">
                 <span class="help-about-title">Session Deck</span>
                 <span class="help-about-desc">Web-based tmux workspace manager</span>
-                <span class="help-about-url">deck.hha.sh</span>
                 <span class="help-about-version">v0.1.0</span>
+                <a class="help-about-link" href="https://github.com/JesseProjects-LLC/session-deck" target="_blank" rel="noopener">GitHub</a>
+                <span class="help-about-author">by <a class="help-about-link" href="https://github.com/JesseProjects-LLC" target="_blank" rel="noopener">Jesse Jones</a></span>
               </div>
             </div>
           {/if}
@@ -1412,7 +1372,7 @@
 
   <!-- Session picker overlay -->
   {#if showSessionPicker}
-    <div class="picker-overlay" role="dialog" onclick={closeSessionPicker}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={closeSessionPicker}>
       <div class="picker" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Assign Session to Pane</span>
@@ -1441,99 +1401,10 @@
     </div>
   {/if}
 
-  <!-- Session manager modal -->
-  {#if showSessionManager}
-    <div class="picker-overlay" role="dialog" onclick={() => showSessionManager = false}>
-      <div class="picker session-mgr" onclick={(e) => e.stopPropagation()}>
-        <div class="picker-hdr">
-          <span>Sessions</span>
-          <div class="mgr-tabs">
-            <button class="mgr-tab" class:active={sessionMgrTab === 'list'} onclick={() => sessionMgrTab = 'list'}>All Sessions</button>
-            <button class="mgr-tab" class:active={sessionMgrTab === 'create'} onclick={() => sessionMgrTab = 'create'}>New</button>
-          </div>
-          <button class="picker-close" onclick={() => showSessionManager = false}>&times;</button>
-        </div>
-
-        {#if sessionMgrTab === 'list'}
-          <div class="mgr-legend">
-            <span class="mgr-legend-item"><span class="dot claude"></span> Claude Code</span>
-            <span class="mgr-legend-item"><span class="dot gsd"></span> GSD / Auto</span>
-            <span class="mgr-legend-item"><span class="dot terminal"></span> Terminal</span>
-          </div>
-          <div class="picker-body">
-            {#each sessionsByHost() as [hostName, hostSessions]}
-              <div class="mgr-host-group">
-                <div class="mgr-host-label">{hostName}</div>
-                {#each hostSessions as s}
-                  <div class="mgr-session-row">
-                    <span class="dot {typeClass(s.type)}"></span>
-                    <span class="mgr-session-name">{s.name}</span>
-                    <span class="mgr-session-meta">
-                      {#if s.attached}
-                        <span class="prop-badge attached">active</span>
-                      {:else}
-                        <span class="prop-badge detached">detached</span>
-                      {/if}
-                    </span>
-                    <div class="mgr-session-actions">
-                      <button class="mgr-act" title="Rename" onclick={() => openRenameSessionModal(s.name, hostName)}>
-                        <span class="mgr-icon-rename"></span>
-                      </button>
-                      <button class="mgr-act danger" title="Kill session" onclick={() => openDeleteSessionModal(s.name, hostName)}>
-                        <span class="mgr-icon-delete"></span>
-                      </button>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-            {:else}
-              <div class="props-empty" style="padding:32px">
-                <span>No sessions found</span>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <div class="modal-body">
-            <label class="field-label">Session name</label>
-            <input
-              class="field-input"
-              type="text"
-              bind:value={newSessionName}
-              placeholder="my-session"
-              onkeydown={(e) => e.key === 'Enter' && handleCreateSession()}
-            />
-            <label class="field-label">Host</label>
-            <div class="preset-grid">
-              {#each hosts.filter(h => h.group !== 'Network' && h.group !== 'Client') as h}
-                <button
-                  class="preset-btn"
-                  class:active={newSessionHost === h.name}
-                  onclick={() => newSessionHost = h.name}
-                >{h.name}</button>
-              {/each}
-            </div>
-            <label class="field-label">Start directory <span class="field-hint">(optional)</span></label>
-            <input
-              class="field-input"
-              type="text"
-              bind:value={newSessionDir}
-              placeholder="/home/user/project"
-              onkeydown={(e) => e.key === 'Enter' && handleCreateSession()}
-            />
-            <button
-              class="action-btn"
-              onclick={handleCreateSession}
-              disabled={!newSessionName.trim() || sessionMgrLoading}
-            >{sessionMgrLoading ? 'Creating...' : 'Create Session'}</button>
-          </div>
-        {/if}
-      </div>
-    </div>
-  {/if}
 
   <!-- Rename session modal -->
   {#if showRenameSession}
-    <div class="picker-overlay" role="dialog" onclick={() => showRenameSession = null}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showRenameSession = null}>
       <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Rename Session</span>
@@ -1561,7 +1432,7 @@
 
   <!-- Delete session confirmation -->
   {#if showDeleteSession}
-    <div class="picker-overlay" role="dialog" onclick={() => showDeleteSession = null}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showDeleteSession = null}>
       <div class="picker" style="width:360px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Kill Session</span>
@@ -1585,7 +1456,7 @@
 
   <!-- New workspace modal -->
   {#if showNewWsModal}
-    <div class="picker-overlay" role="dialog" onclick={() => showNewWsModal = false}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showNewWsModal = false}>
       <div class="picker" style="width:360px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>New Workspace</span>
@@ -1618,7 +1489,7 @@
 
   <!-- Rename modal -->
   {#if showRenameModal}
-    <div class="picker-overlay" role="dialog" onclick={() => showRenameModal = null}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showRenameModal = null}>
       <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Rename Workspace</span>
@@ -1635,7 +1506,7 @@
 
   <!-- Delete confirmation -->
   {#if showDeleteConfirm}
-    <div class="picker-overlay" role="dialog" onclick={() => showDeleteConfirm = null}>
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showDeleteConfirm = null}>
       <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Delete Workspace</span>
@@ -1953,6 +1824,7 @@
     background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
     z-index: 2000; display: flex; align-items: center; justify-content: center;
   }
+  .picker-overlay.modal-top { z-index: 3500; }
   .picker {
     width: 400px; max-height: 500px; background: #151b23;
     border: 1px solid #1e2530; border-radius: 10px;
@@ -2342,7 +2214,12 @@
   }
   .help-about-title { font-size: 14px; font-weight: 700; color: #3d8bfd; font-family: 'JetBrains Mono', monospace; }
   .help-about-desc { font-size: 11px; color: #6b7688; }
-  .help-about-url { font-size: 10px; color: #3d4450; font-family: 'JetBrains Mono', monospace; }
+  .help-about-link {
+    font-size: 10px; color: #3d8bfd; font-family: 'JetBrains Mono', monospace;
+    text-decoration: none; transition: color 0.1s;
+  }
+  .help-about-link:hover { color: #5a9eff; text-decoration: underline; }
+  .help-about-author { font-size: 10px; color: #3d4450; }
   .help-about-version { font-size: 9px; color: #3d4450; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
 
   /* Host management */

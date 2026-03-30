@@ -17,7 +17,7 @@
     "terminal",
     "workspace-manager"
   ],
-  "author": "Jesse",
+  "author": "Jesse Jones",
   "license": "MIT",
   "dependencies": {
     "@fastify/cors": "^11.2.0",
