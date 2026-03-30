@@ -29,6 +29,18 @@
   let contextMenu = $state(null);
   let paneMenu = $state(null);
 
+  // Session management modals
+  let showSessionManager = $state(false);
+  let sessionMgrTab = $state('list'); // 'list' | 'create'
+  let newSessionName = $state('');
+  let newSessionHost = $state('reliant');
+  let newSessionDir = $state('');
+  let showRenameSession = $state(null); // { name, host }
+  let renameSessionValue = $state('');
+  let showDeleteSession = $state(null); // { name, host }
+  let sessionMgrLoading = $state(false);
+  let hosts = $state([]);
+
   // Toast notifications
   let toasts = $state([]);
   let toastId = 0;
@@ -86,10 +98,11 @@
       const localData = await localRes.json();
       sessions = (localData.sessions || []).map(s => ({ ...s, host: 'reliant' }));
 
-      // Then fetch all hosts (including remote) in background
+      // Load hosts list (for session manager host picker)
       const hostsRes = await fetch('/api/hosts');
       const hostsData = await hostsRes.json();
-      const remoteHosts = (hostsData.hosts || []).filter(h => !h.isLocal);
+      hosts = hostsData.hosts || [];
+      const remoteHosts = hosts.filter(h => !h.isLocal);
 
       if (remoteHosts.length > 0) {
         Promise.allSettled(
@@ -286,6 +299,104 @@
       showDeleteConfirm = null;
     } catch (e) {
       toast(e.message || 'Failed to delete', 'error');
+    }
+  }
+
+  // --- Session management ---
+
+  function openSessionManager() {
+    sessionMgrTab = 'list';
+    newSessionName = '';
+    newSessionHost = 'reliant';
+    newSessionDir = '';
+    showSessionManager = true;
+  }
+
+  function sessionsByHost() {
+    const grouped = {};
+    for (const s of sessions) {
+      const h = s.host || 'reliant';
+      if (!grouped[h]) grouped[h] = [];
+      grouped[h].push(s);
+    }
+    // Sort hosts: local first, then alphabetical
+    const sorted = Object.entries(grouped).sort(([a], [b]) => {
+      if (a === 'reliant') return -1;
+      if (b === 'reliant') return 1;
+      return a.localeCompare(b);
+    });
+    return sorted;
+  }
+
+  async function handleCreateSession() {
+    if (!newSessionName.trim()) return;
+    sessionMgrLoading = true;
+    try {
+      const res = await fetch(`/api/sessions/${newSessionHost}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newSessionName.trim(), startDir: newSessionDir.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create session');
+      toast(`Created session "${newSessionName.trim()}" on ${newSessionHost}`, 'success');
+      newSessionName = '';
+      newSessionDir = '';
+      sessionMgrTab = 'list';
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      sessionMgrLoading = false;
+    }
+  }
+
+  function openRenameSessionModal(name, host) {
+    renameSessionValue = name;
+    showRenameSession = { name, host };
+  }
+
+  async function handleRenameSession() {
+    if (!renameSessionValue.trim() || !showRenameSession) return;
+    sessionMgrLoading = true;
+    try {
+      const { name, host } = showRenameSession;
+      const res = await fetch(`/api/sessions/${host}/${name}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newName: renameSessionValue.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to rename session');
+      toast(`Renamed "${name}" to "${renameSessionValue.trim()}" on ${host}`, 'success');
+      showRenameSession = null;
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      sessionMgrLoading = false;
+    }
+  }
+
+  function openDeleteSessionModal(name, host) {
+    showDeleteSession = { name, host };
+  }
+
+  async function handleDeleteSession() {
+    if (!showDeleteSession) return;
+    sessionMgrLoading = true;
+    try {
+      const { name, host } = showDeleteSession;
+      const res = await fetch(`/api/sessions/${host}/${name}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete session');
+      toast(`Deleted session "${name}" on ${host}`, 'success');
+      showDeleteSession = null;
+      await loadSessions();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      sessionMgrLoading = false;
     }
   }
 
@@ -511,6 +622,10 @@
                 <span class="prop-label">Created</span>
                 <span class="prop-value">{formatTimestamp(session.created)}</span>
               </div>
+              <div class="prop-actions">
+                <button class="prop-act-btn" onclick={() => openRenameSessionModal(session.name, host)}>Rename</button>
+                <button class="prop-act-btn danger" onclick={() => openDeleteSessionModal(session.name, host)}>Kill</button>
+              </div>
             </div>
 
             <div class="prop-divider"></div>
@@ -571,12 +686,15 @@
   {#if paneMenu}
     <div class="ctx-menu" style="left:{paneMenu.x}px;top:{paneMenu.y}px">
       <button class="ctx-item" onclick={() => { openSessionPicker(paneMenu.path, paneMenu.session); paneMenu = null; }}>Change Session</button>
+      <button class="ctx-item" onclick={() => { openRenameSessionModal(paneMenu.session, paneMenu.host); paneMenu = null; }}>Rename Session</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'h'); paneMenu = null; }}>Split Left/Right</button>
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'v'); paneMenu = null; }}>Split Top/Bottom</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" onclick={() => { handleZoom(nodeIdFromPane(paneMenu), paneMenu.session, paneMenu.host); paneMenu = null; }}>{zoomedPane ? 'Restore' : 'Zoom'}</button>
       <button class="ctx-item danger" onclick={() => { handleClosePane(paneMenu.path); paneMenu = null; }}>Close Pane</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item danger" onclick={() => { openDeleteSessionModal(paneMenu.session, paneMenu.host); paneMenu = null; }}>Kill Session</button>
     </div>
   {/if}
 
@@ -603,6 +721,146 @@
               {/if}
             </button>
           {/each}
+        </div>
+        <div class="picker-footer">
+          <button class="footer-link" onclick={() => { closeSessionPicker(); openSessionManager(); }}>Manage Sessions</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Session manager modal -->
+  {#if showSessionManager}
+    <div class="picker-overlay" role="dialog" onclick={() => showSessionManager = false}>
+      <div class="picker session-mgr" onclick={(e) => e.stopPropagation()}>
+        <div class="picker-hdr">
+          <span>Sessions</span>
+          <div class="mgr-tabs">
+            <button class="mgr-tab" class:active={sessionMgrTab === 'list'} onclick={() => sessionMgrTab = 'list'}>All Sessions</button>
+            <button class="mgr-tab" class:active={sessionMgrTab === 'create'} onclick={() => sessionMgrTab = 'create'}>New</button>
+          </div>
+          <button class="picker-close" onclick={() => showSessionManager = false}>&times;</button>
+        </div>
+
+        {#if sessionMgrTab === 'list'}
+          <div class="picker-body">
+            {#each sessionsByHost() as [hostName, hostSessions]}
+              <div class="mgr-host-group">
+                <div class="mgr-host-label">{hostName}</div>
+                {#each hostSessions as s}
+                  <div class="mgr-session-row">
+                    <span class="dot {typeClass(s.type)}"></span>
+                    <span class="mgr-session-name">{s.name}</span>
+                    <span class="mgr-session-meta">
+                      {#if s.attached}
+                        <span class="prop-badge attached">active</span>
+                      {:else}
+                        <span class="prop-badge detached">detached</span>
+                      {/if}
+                    </span>
+                    <div class="mgr-session-actions">
+                      <button class="mgr-act" title="Rename" onclick={() => openRenameSessionModal(s.name, hostName)}>
+                        <span class="mgr-icon-rename"></span>
+                      </button>
+                      <button class="mgr-act danger" title="Kill session" onclick={() => openDeleteSessionModal(s.name, hostName)}>
+                        <span class="mgr-icon-delete"></span>
+                      </button>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else}
+              <div class="props-empty" style="padding:32px">
+                <span>No sessions found</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="modal-body">
+            <label class="field-label">Session name</label>
+            <input
+              class="field-input"
+              type="text"
+              bind:value={newSessionName}
+              placeholder="my-session"
+              onkeydown={(e) => e.key === 'Enter' && handleCreateSession()}
+            />
+            <label class="field-label">Host</label>
+            <div class="preset-grid">
+              {#each hosts.filter(h => h.group !== 'Network' && h.group !== 'Client') as h}
+                <button
+                  class="preset-btn"
+                  class:active={newSessionHost === h.name}
+                  onclick={() => newSessionHost = h.name}
+                >{h.name}</button>
+              {/each}
+            </div>
+            <label class="field-label">Start directory <span class="field-hint">(optional)</span></label>
+            <input
+              class="field-input"
+              type="text"
+              bind:value={newSessionDir}
+              placeholder="/home/user/project"
+              onkeydown={(e) => e.key === 'Enter' && handleCreateSession()}
+            />
+            <button
+              class="action-btn"
+              onclick={handleCreateSession}
+              disabled={!newSessionName.trim() || sessionMgrLoading}
+            >{sessionMgrLoading ? 'Creating...' : 'Create Session'}</button>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Rename session modal -->
+  {#if showRenameSession}
+    <div class="picker-overlay" role="dialog" onclick={() => showRenameSession = null}>
+      <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
+        <div class="picker-hdr">
+          <span>Rename Session</span>
+          <button class="picker-close" onclick={() => showRenameSession = null}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-text" style="font-size:11px;color:#6b7688">
+            Renaming "{showRenameSession.name}" on {showRenameSession.host}
+          </p>
+          <input
+            class="field-input"
+            type="text"
+            bind:value={renameSessionValue}
+            onkeydown={(e) => e.key === 'Enter' && handleRenameSession()}
+          />
+          <button
+            class="action-btn"
+            onclick={handleRenameSession}
+            disabled={!renameSessionValue.trim() || sessionMgrLoading}
+          >{sessionMgrLoading ? 'Renaming...' : 'Rename'}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Delete session confirmation -->
+  {#if showDeleteSession}
+    <div class="picker-overlay" role="dialog" onclick={() => showDeleteSession = null}>
+      <div class="picker" style="width:360px" onclick={(e) => e.stopPropagation()}>
+        <div class="picker-hdr">
+          <span>Kill Session</span>
+          <button class="picker-close" onclick={() => showDeleteSession = null}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-text">Kill session "{showDeleteSession.name}" on {showDeleteSession.host}?</p>
+          <p class="confirm-warn">Any running processes in this session will be terminated.</p>
+          <div class="btn-row">
+            <button class="action-btn secondary" onclick={() => showDeleteSession = null}>Cancel</button>
+            <button
+              class="action-btn danger"
+              onclick={handleDeleteSession}
+              disabled={sessionMgrLoading}
+            >{sessionMgrLoading ? 'Killing...' : 'Kill Session'}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -689,7 +947,7 @@
     <span class="sep-dot">&middot;</span>
     <span>{activeLayout ? countPanes(activeLayout) : 0} panes</span>
     <span class="sep-dot">&middot;</span>
-    <span>{sessions.length} sessions</span>
+    <button class="shortcut-btn" onclick={openSessionManager}>{sessions.length} sessions</button>
     <span class="spacer"></span>
     <button class="shortcut-btn" onclick={() => {
       const idx = workspaces.findIndex(w => w.id === activeId);
@@ -952,4 +1210,106 @@
     font-size: 9px; padding: 0 3px; border-radius: 2px;
     background: #0a0e14; border: 1px solid #1e2530; color: #6b7688;
   }
+
+  /* Session picker footer */
+  .picker-footer {
+    padding: 8px 12px; border-top: 1px solid #1e2530;
+    display: flex; justify-content: center;
+  }
+  .footer-link {
+    background: none; border: none; color: #3d8bfd; font-size: 11px;
+    cursor: pointer; font-family: 'DM Sans', sans-serif; padding: 4px 8px;
+    border-radius: 4px; transition: background 0.1s;
+  }
+  .footer-link:hover { background: rgba(61,139,253,0.1); }
+
+  /* Session manager */
+  .session-mgr { width: 500px; max-height: 600px; }
+  .mgr-tabs { display: flex; gap: 2px; margin-left: auto; }
+  .mgr-tab {
+    padding: 3px 10px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: #6b7688; font-size: 11px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.1s;
+  }
+  .mgr-tab:hover { color: #c5cdd9; }
+  .mgr-tab.active { color: #3d8bfd; background: rgba(61,139,253,0.08); border-color: rgba(61,139,253,0.2); }
+
+  .mgr-host-group { margin-bottom: 4px; }
+  .mgr-host-label {
+    padding: 6px 12px 2px; font-size: 10px; color: #3d4450;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .mgr-session-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 6px; transition: background 0.1s;
+  }
+  .mgr-session-row:hover { background: #1c2333; }
+  .mgr-session-row:hover .mgr-session-actions { opacity: 1; }
+  .mgr-session-name {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    color: #c5cdd9; flex: 1;
+  }
+  .mgr-session-meta { display: flex; align-items: center; gap: 4px; }
+  .mgr-session-actions {
+    display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s;
+  }
+  .mgr-act {
+    width: 24px; height: 24px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: #6b7688; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s;
+  }
+  .mgr-act:hover { background: #252d3d; border-color: #2a3345; color: #c5cdd9; }
+  .mgr-act.danger:hover { background: rgba(240,113,120,0.1); border-color: rgba(240,113,120,0.3); color: #f07178; }
+
+  /* Rename icon — small pencil/edit shape via CSS */
+  .mgr-icon-rename {
+    display: block; width: 10px; height: 10px; position: relative;
+    transform: rotate(-45deg);
+  }
+  .mgr-icon-rename::before {
+    content: ''; position: absolute; bottom: 0; left: 50%;
+    width: 5px; height: 8px; border: 1.5px solid currentColor;
+    border-bottom: none; border-radius: 1px 1px 0 0;
+    transform: translateX(-50%);
+  }
+  .mgr-icon-rename::after {
+    content: ''; position: absolute; bottom: -1px; left: 50%;
+    width: 0; height: 0;
+    border-left: 2.5px solid transparent;
+    border-right: 2.5px solid transparent;
+    border-top: 3px solid currentColor;
+    transform: translateX(-50%);
+  }
+
+  /* Delete icon — small X */
+  .mgr-icon-delete {
+    display: block; width: 8px; height: 8px; position: relative;
+  }
+  .mgr-icon-delete::before, .mgr-icon-delete::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 8px; height: 1.5px; background: currentColor;
+  }
+  .mgr-icon-delete::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .mgr-icon-delete::after { transform: translate(-50%, -50%) rotate(-45deg); }
+
+  .field-hint { font-weight: 400; color: #3d4450; text-transform: none; letter-spacing: 0; }
+
+  .confirm-warn {
+    font-size: 11px; color: #f07178; margin: 0; padding: 6px 10px;
+    background: rgba(240,113,120,0.08); border-radius: 4px;
+    border: 1px solid rgba(240,113,120,0.15);
+  }
+
+  /* Properties panel session actions */
+  .prop-actions { display: flex; gap: 4px; margin-top: 4px; }
+  .prop-act-btn {
+    padding: 3px 10px; border-radius: 4px; border: 1px solid #1e2530;
+    background: transparent; color: #6b7688; font-size: 10px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; transition: all 0.1s;
+  }
+  .prop-act-btn:hover { border-color: #3d8bfd; color: #c5cdd9; }
+  .prop-act-btn.danger { border-color: rgba(240,113,120,0.2); color: #6b7688; }
+  .prop-act-btn.danger:hover { border-color: #f07178; color: #f07178; background: rgba(240,113,120,0.08); }
 </style>
