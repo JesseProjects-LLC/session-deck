@@ -7,7 +7,7 @@
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
     createWorkspace, deleteWorkspace, renameWorkspace, duplicateWorkspace,
-    renameSessionInWorkspaces,
+    renameSessionInWorkspaces, updatePaneTitle,
   } from './lib/stores/workspaces.js';
 
   let sessions = $state([]);
@@ -67,6 +67,10 @@
   let editTypeColor = $state('');
   let editTypeName = $state('');
   let scanningTypes = $state(false);
+
+  // Pane title rename
+  let showRenamePaneModal = $state(null); // { path, session, host, currentTitle }
+  let renamePaneValue = $state('');
 
   // Command palette
   let showCommandPalette = $state(false);
@@ -912,6 +916,30 @@
     openSettingsSection('sessions');
   }
 
+  function openRenamePaneModal(path, session, host) {
+    // Get current pane title from the layout
+    let node = activeLayout;
+    for (let i = 0; i < path.length; i++) {
+      if (node.children) node = node.children[path[i]];
+    }
+    renamePaneValue = node?.paneTitle || '';
+    showRenamePaneModal = { path, session, host };
+  }
+
+  function handleRenamePane() {
+    if (!showRenamePaneModal || !activeId) return;
+    updatePaneTitle(activeId, showRenamePaneModal.path, renamePaneValue.trim());
+    const label = renamePaneValue.trim() || showRenamePaneModal.session;
+    toast(`Pane renamed to "${label}"`, 'success');
+    showRenamePaneModal = null;
+  }
+
+  function clearPaneTitle(path) {
+    if (!activeId) return;
+    updatePaneTitle(activeId, path, null);
+    toast('Pane name cleared', 'info');
+  }
+
   function openRenameSessionModal(name, host) {
     renameSessionValue = name;
     showRenameSession = { name, host };
@@ -1680,6 +1708,7 @@
     <div class="ctx-menu" style="left:{paneMenu.x}px;top:{paneMenu.y}px">
       <button class="ctx-item" onclick={() => { openSessionPicker(paneMenu.path, paneMenu.session); paneMenu = null; }}>Change Session</button>
       <button class="ctx-item" onclick={() => { openRenameSessionModal(paneMenu.session, paneMenu.host); paneMenu = null; }}>Rename Session</button>
+      <button class="ctx-item" onclick={() => { openRenamePaneModal(paneMenu.path, paneMenu.session, paneMenu.host); paneMenu = null; }}>Rename Pane</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'h'); paneMenu = null; }}>Split Left/Right</button>
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'v'); paneMenu = null; }}>Split Top/Bottom</button>
@@ -1746,6 +1775,39 @@
             onclick={handleRenameSession}
             disabled={!renameSessionValue.trim() || sessionMgrLoading}
           >{sessionMgrLoading ? 'Renaming...' : 'Rename'}</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Rename pane modal -->
+  {#if showRenamePaneModal}
+    <div class="picker-overlay modal-top" role="dialog" onclick={() => showRenamePaneModal = null}>
+      <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
+        <div class="picker-hdr">
+          <span>Rename Pane</span>
+          <button class="picker-close" onclick={() => showRenamePaneModal = null}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="confirm-text" style="font-size:11px;color:var(--text-secondary)">
+            Custom label for "{showRenamePaneModal.session}" on {showRenamePaneModal.host}
+          </p>
+          <input
+            class="field-input"
+            type="text"
+            bind:value={renamePaneValue}
+            placeholder="Enter custom name (or leave empty to clear)"
+            onkeydown={(e) => e.key === 'Enter' && handleRenamePane()}
+            autofocus
+          />
+          <div class="btn-row">
+            {#if renamePaneValue || showRenamePaneModal}
+              <button class="action-btn secondary" onclick={() => { renamePaneValue = ''; handleRenamePane(); }}>Clear Name</button>
+            {/if}
+            <button class="action-btn" onclick={handleRenamePane}>
+              {renamePaneValue.trim() ? 'Rename' : 'Clear'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

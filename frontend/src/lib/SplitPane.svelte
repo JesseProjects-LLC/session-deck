@@ -141,6 +141,7 @@
       sessionTypeColor={getTypeInfo(node.session).color}
       sessionTypeLabel={getTypeInfo(node.session).label}
       sessionContext={getTypeInfo(node.session).context}
+      paneTitle={node.paneTitle || null}
       onSessionClick={() => handleSessionClick(node.session)}
       onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
       onSplit={(dir) => onSplit(path, dir)}

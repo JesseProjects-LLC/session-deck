@@ -70,6 +70,36 @@ export async function updatePaneSession(workspaceId, path, session, host) {
 }
 
 /**
+ * Set or clear a custom pane title by path.
+ * Pass null or '' to clear the override (reverts to auto-detected name).
+ */
+export function updatePaneTitle(workspaceId, path, title) {
+  const ws = _workspaces.find(w => w.id === workspaceId);
+  if (!ws) return;
+
+  let node = ws.layout;
+  if (path.length === 0) {
+    // Root node is the leaf
+    node.paneTitle = title || undefined;
+  } else {
+    for (let i = 0; i < path.length - 1; i++) {
+      node = node.children[path[i]];
+    }
+    const leaf = node.children ? node.children[path[path.length - 1]] : node;
+    if (leaf) {
+      if (title) {
+        leaf.paneTitle = title;
+      } else {
+        delete leaf.paneTitle;
+      }
+    }
+  }
+
+  notify();
+  debouncedSave(workspaceId, ws.layout);
+}
+
+/**
  * Rename a session across all workspaces. Finds every pane referencing
  * oldName on the given host and updates it to newName. Persists changes.
  */
