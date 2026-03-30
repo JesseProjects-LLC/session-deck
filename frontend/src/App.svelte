@@ -408,6 +408,7 @@
             zoomed={true}
             onZoom={() => { zoomedPane = null; }}
             onSessionClick={() => openSessionPicker([], zoomedPane.session)}
+            onContextMenu={(e) => handlePaneContextMenu(e, [], zoomedPane.session, zoomedPane.host)}
           />
         </div>
       {:else if activeLayout && activeId}
@@ -457,13 +458,13 @@
                 <span class="prop-label">Host</span>
                 <span class="prop-value">{host}</span>
               </div>
-              <div class="prop-row" title="tmux windows in this session">
-                <span class="prop-label">tmux Windows</span>
-                <span class="prop-value">{session.windows ?? '—'}</span>
+              <div class="prop-row" title="Number of tmux windows (tabs) in this session">
+                <span class="prop-label">Tabs</span>
+                <span class="prop-value">{session.windows ?? '—'} {session.windows === 1 ? 'window' : 'windows'}</span>
               </div>
-              <div class="prop-row" title="Number of clients attached to this session">
-                <span class="prop-label">Attached Clients</span>
-                <span class="prop-value">{session.attachedCount ?? '—'}</span>
+              <div class="prop-row" title="How many terminal connections are viewing this session">
+                <span class="prop-label">Viewers</span>
+                <span class="prop-value">{session.attachedCount ?? 0} connected</span>
               </div>
               <div class="prop-row">
                 <span class="prop-label">Attached</span>
@@ -523,7 +524,7 @@
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'h'); paneMenu = null; }}>Split Left/Right</button>
       <button class="ctx-item" onclick={() => { handleSplitPane(paneMenu.path, 'v'); paneMenu = null; }}>Split Top/Bottom</button>
       <div class="ctx-sep"></div>
-      <button class="ctx-item" onclick={() => { handleZoom(nodeIdFromPane(paneMenu), paneMenu.session, paneMenu.host); paneMenu = null; }}>Zoom</button>
+      <button class="ctx-item" onclick={() => { handleZoom(nodeIdFromPane(paneMenu), paneMenu.session, paneMenu.host); paneMenu = null; }}>{zoomedPane ? 'Restore' : 'Zoom'}</button>
       <button class="ctx-item danger" onclick={() => { handleClosePane(paneMenu.path); paneMenu = null; }}>Close Pane</button>
     </div>
   {/if}

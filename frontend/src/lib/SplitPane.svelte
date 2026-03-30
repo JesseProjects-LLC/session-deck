@@ -109,10 +109,11 @@
   function handleDropOnPane(e) {
     e.preventDefault();
     const sourceSession = e.dataTransfer.getData('text/plain');
-    if (sourceSession && dropZone && sourceSession !== node.session) {
-      onDrop(sourceSession, node.session, dropZone);
-    }
+    const zone = dropZone;
     dropZone = null;
+    if (sourceSession && zone && sourceSession !== node.session) {
+      onDrop(sourceSession, node.session, zone);
+    }
   }
 </script>
 

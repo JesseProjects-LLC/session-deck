@@ -229,8 +229,12 @@
     {/if}
     <span class="tbadge {typeClass(session)}">{typeLabel(session)}</span>
     <div class="pane-actions">
-      <button class="pane-act" title="Split left/right" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>┃</button>
-      <button class="pane-act" title="Split top/bottom" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>━</button>
+      <button class="pane-act split-btn" title="Split left | right" onclick={(e) => { e.stopPropagation(); onSplit?.('h'); }}>
+        <span class="split-icon-h"></span>
+      </button>
+      <button class="pane-act split-btn" title="Split top / bottom" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>
+        <span class="split-icon-v"></span>
+      </button>
       <button class="pane-act" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>{zoomed ? '⤡' : '⤢'}</button>
       <button class="pane-act close-act" title="Close pane" onclick={(e) => { e.stopPropagation(); onClose?.(); }}>✕</button>
     </div>
@@ -303,6 +307,22 @@
   }
   .pane-act:hover { background: #1c2333; color: #c5cdd9; }
   .pane-act.close-act:hover { background: rgba(240,113,120,0.15); color: #f07178; }
+
+  /* Split icons — CSS boxes, no font dependency */
+  .split-btn { padding: 2px; }
+  .split-icon-h, .split-icon-v {
+    display: flex; width: 14px; height: 10px;
+    border: 1px solid currentColor; border-radius: 1px; gap: 1px;
+  }
+  .split-icon-h::before, .split-icon-h::after {
+    content: ''; flex: 1; background: currentColor; opacity: 0.2; border-radius: 1px;
+  }
+  .split-icon-h::before { border-right: 1px solid currentColor; }
+  .split-icon-v { flex-direction: column; }
+  .split-icon-v::before, .split-icon-v::after {
+    content: ''; flex: 1; background: currentColor; opacity: 0.2; border-radius: 1px;
+  }
+  .split-icon-v::before { border-bottom: 1px solid currentColor; }
 
   .term-container {
     flex: 1;
