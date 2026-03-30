@@ -1613,6 +1613,11 @@
                 <span class="help-about-version">v0.1.0</span>
                 <a class="help-about-link" href="https://github.com/JesseProjects-LLC/session-deck" target="_blank" rel="noopener">GitHub</a>
                 <span class="help-about-author">by <a class="help-about-link" href="https://github.com/JesseProjects-LLC" target="_blank" rel="noopener">Jesse Jones</a></span>
+                {#if authUser}
+                  <span class="help-about-auth">Signed in as {authUser.name} ({authUser.method})</span>
+                {:else}
+                  <span class="help-about-auth">No authentication</span>
+                {/if}
               </div>
             </div>
           {/if}
@@ -2638,6 +2643,7 @@
   }
   .help-about-link:hover { color: var(--accent-hover); text-decoration: underline; }
   .help-about-author { font-size: 10px; color: var(--text-muted); }
+  .help-about-auth { font-size: 9px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
   .help-about-version { font-size: 9px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
 
   /* Host management */

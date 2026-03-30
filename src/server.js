@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 import config from './lib/config.js';
 import { getDb, closeDb } from './lib/db.js';
 import { registerAuth } from './lib/auth.js';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import healthRoutes from './routes/health.js';
 import hostsRoutes from './routes/hosts.js';
 import managedHostsRoutes from './routes/managed-hosts.js';
@@ -30,6 +32,17 @@ export async function buildServer() {
 
   // CORS — allow any origin on LAN
   await fastify.register(cors, { origin: true });
+
+  // Security headers
+  await fastify.register(helmet, {
+    contentSecurityPolicy: false, // CSP breaks inline styles in xterm.js
+    crossOriginEmbedderPolicy: false,
+  });
+
+  // Rate limiting (protects login endpoint from brute force)
+  await fastify.register(rateLimit, {
+    global: false, // only apply where explicitly enabled
+  });
 
   // WebSocket support
   await fastify.register(fastifyWebSocket);

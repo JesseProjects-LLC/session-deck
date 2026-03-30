@@ -2,6 +2,7 @@
 
 import { parseSSHConfig } from '../services/ssh-config.js';
 import { listAllSessions, listSessions, createSession, renameSession, deleteSession } from '../services/tmux.js';
+import { isValidSessionName } from '../lib/validate.js';
 
 function findHost(hostName) {
   const hosts = parseSSHConfig();
@@ -53,6 +54,9 @@ export default async function sessionsRoutes(fastify) {
   fastify.post('/api/sessions/:hostName', async (request, reply) => {
     const { hostName } = request.params;
     const { name, startDir } = request.body || {};
+    if (!isValidSessionName(name)) {
+      return reply.code(400).send({ error: 'Invalid session name. Use only letters, digits, hyphens, underscores, and dots.' });
+    }
     const host = findHost(hostName);
     if (!host) return reply.code(404).send({ error: `Host not found: ${hostName}` });
 
@@ -69,6 +73,9 @@ export default async function sessionsRoutes(fastify) {
   fastify.put('/api/sessions/:hostName/:sessionName', async (request, reply) => {
     const { hostName, sessionName } = request.params;
     const { newName } = request.body || {};
+    if (!isValidSessionName(newName)) {
+      return reply.code(400).send({ error: 'Invalid session name. Use only letters, digits, hyphens, underscores, and dots.' });
+    }
     const host = findHost(hostName);
     if (!host) return reply.code(404).send({ error: `Host not found: ${hostName}` });
 

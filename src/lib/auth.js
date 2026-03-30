@@ -89,8 +89,12 @@ async function registerBasicAuth(fastify) {
     reply.type('text/html').send(loginPage());
   });
 
-  // Login handler
-  fastify.post('/auth/login', async (request, reply) => {
+  // Login handler (rate limited)
+  fastify.post('/auth/login', {
+    config: {
+      rateLimit: { max: 10, timeWindow: '5 minutes' },
+    },
+  }, async (request, reply) => {
     const { username, password } = request.body || {};
     if (username === auth.basicUser && password === auth.basicPass) {
       request.session.authenticated = true;
