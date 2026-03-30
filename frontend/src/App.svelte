@@ -62,7 +62,7 @@
   }
 
   function formatTimestamp(ts) {
-    if (!ts) return '—';
+    if (!ts) return '--';
     const d = new Date(ts);
     const now = new Date();
     const diff = now - d;
@@ -422,7 +422,7 @@
     </div>
     <span class="spacer"></span>
     {#if zoomedPane}
-      <span class="pane-count zoom-indicator">⤢ {zoomedPane.session}</span>
+      <span class="pane-count zoom-indicator">ZOOM: {zoomedPane.session}</span>
     {:else if activeLayout}
       <span class="pane-count">{countPanes(activeLayout)} panes</span>
     {/if}
@@ -476,7 +476,7 @@
       <aside class="props-panel">
         <div class="props-hdr">
           <span class="props-title">Properties</span>
-          <button class="picker-close" onclick={() => showPropsPanel = false}>✕</button>
+          <button class="picker-close" onclick={() => showPropsPanel = false}>&times;</button>
         </div>
         {#if focusedId && getFocusedSession()}
           {@const session = getFocusedSession()}
@@ -549,7 +549,7 @@
           </div>
         {:else}
           <div class="props-empty">
-            <span class="props-empty-icon">◎</span>
+            <span class="props-empty-icon"></span>
             <span>Click a pane to see details</span>
           </div>
         {/if}
@@ -560,10 +560,10 @@
   <!-- Workspace context menu -->
   {#if contextMenu}
     <div class="ctx-menu" style="left:{contextMenu.x}px;top:{contextMenu.y}px">
-      <button class="ctx-item" onclick={() => openRename(contextMenu.id)}>✏️ Rename</button>
-      <button class="ctx-item" onclick={() => handleDuplicate(contextMenu.id)}>📋 Duplicate</button>
+      <button class="ctx-item" onclick={() => openRename(contextMenu.id)}>Rename</button>
+      <button class="ctx-item" onclick={() => handleDuplicate(contextMenu.id)}>Duplicate</button>
       <div class="ctx-sep"></div>
-      <button class="ctx-item danger" onclick={() => openDeleteConfirm(contextMenu.id)}>🗑️ Delete</button>
+      <button class="ctx-item danger" onclick={() => openDeleteConfirm(contextMenu.id)}>Delete</button>
     </div>
   {/if}
 
@@ -586,7 +586,7 @@
       <div class="picker" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Assign Session to Pane</span>
-          <button class="picker-close" onclick={closeSessionPicker}>✕</button>
+          <button class="picker-close" onclick={closeSessionPicker}>&times;</button>
         </div>
         <div class="picker-body">
           {#each sessions as s}
@@ -614,7 +614,7 @@
       <div class="picker" style="width:360px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>New Workspace</span>
-          <button class="picker-close" onclick={() => showNewWsModal = false}>✕</button>
+          <button class="picker-close" onclick={() => showNewWsModal = false}>&times;</button>
         </div>
         <div class="modal-body">
           <label class="field-label">Name</label>
@@ -647,7 +647,7 @@
       <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Rename Workspace</span>
-          <button class="picker-close" onclick={() => showRenameModal = null}>✕</button>
+          <button class="picker-close" onclick={() => showRenameModal = null}>&times;</button>
         </div>
         <div class="modal-body">
           <input class="field-input" type="text" bind:value={renameValue}
@@ -664,7 +664,7 @@
       <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
         <div class="picker-hdr">
           <span>Delete Workspace</span>
-          <button class="picker-close" onclick={() => showDeleteConfirm = null}>✕</button>
+          <button class="picker-close" onclick={() => showDeleteConfirm = null}>&times;</button>
         </div>
         <div class="modal-body">
           <p class="confirm-text">Delete "{workspaces.find(w => w.id === showDeleteConfirm)?.name}"? This can't be undone.</p>
@@ -686,9 +686,9 @@
 
   <footer class="statusbar">
     <span>workspace: <span class="ws-name">{activeName()}</span></span>
-    <span class="sep-dot">·</span>
+    <span class="sep-dot">&middot;</span>
     <span>{activeLayout ? countPanes(activeLayout) : 0} panes</span>
-    <span class="sep-dot">·</span>
+    <span class="sep-dot">&middot;</span>
     <span>{sessions.length} sessions</span>
     <span class="spacer"></span>
     <button class="shortcut-btn" onclick={() => {
@@ -773,7 +773,15 @@
     align-items: center; justify-content: center; gap: 8px;
     color: #3d4450; font-size: 12px; padding: 24px;
   }
-  .props-empty-icon { font-size: 24px; opacity: 0.5; }
+  .props-empty-icon {
+    width: 32px; height: 32px; border: 2px solid #3d4450; border-radius: 50%;
+    opacity: 0.4; position: relative;
+  }
+  .props-empty-icon::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 8px; height: 8px; background: #3d4450; border-radius: 50%;
+    transform: translate(-50%, -50%);
+  }
 
   .prop-section { display: flex; flex-direction: column; gap: 8px; }
   .prop-session-name {

@@ -240,8 +240,12 @@
       <button class="pane-act split-btn" title="Split top / bottom" onclick={(e) => { e.stopPropagation(); onSplit?.('v'); }}>
         <span class="split-icon-v"></span>
       </button>
-      <button class="pane-act" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>{zoomed ? '⤡' : '⤢'}</button>
-      <button class="pane-act close-act" title="Close pane" onclick={(e) => { e.stopPropagation(); onClose?.(); }}>✕</button>
+      <button class="pane-act zoom-btn" title="{zoomed ? 'Restore' : 'Zoom'}" onclick={(e) => { e.stopPropagation(); onZoom?.(); }}>
+        <span class="zoom-icon" class:restore={zoomed}></span>
+      </button>
+      <button class="pane-act close-act" title="Close pane" onclick={(e) => { e.stopPropagation(); onClose?.(); }}>
+        <span class="close-icon"></span>
+      </button>
     </div>
   </div>
   <div class="term-container" bind:this={containerEl}></div>
@@ -317,17 +321,51 @@
   .split-btn { padding: 2px; }
   .split-icon-h, .split-icon-v {
     display: flex; width: 14px; height: 10px;
-    border: 1px solid currentColor; border-radius: 1px; gap: 1px;
+    border: 1px solid currentColor; border-radius: 1px;
+    overflow: hidden; gap: 2px; background: currentColor;
   }
+  /* Horizontal split: left | right — vertical divider (gap = bright line) */
   .split-icon-h::before, .split-icon-h::after {
-    content: ''; flex: 1; background: currentColor; opacity: 0.2; border-radius: 1px;
+    content: ''; flex: 1; border-radius: 0;
   }
-  .split-icon-h::before { border-right: 1px solid currentColor; }
+  .split-icon-h::before { background: #0b0e11; opacity: 0.6; }
+  .split-icon-h::after { background: #0b0e11; opacity: 0.85; }
+  /* Vertical split: top / bottom — horizontal divider (gap = bright line) */
   .split-icon-v { flex-direction: column; }
   .split-icon-v::before, .split-icon-v::after {
-    content: ''; flex: 1; background: currentColor; opacity: 0.2; border-radius: 1px;
+    content: ''; flex: 1; border-radius: 0;
   }
-  .split-icon-v::before { border-bottom: 1px solid currentColor; }
+  .split-icon-v::before { background: #0b0e11; opacity: 0.6; }
+  .split-icon-v::after { background: #0b0e11; opacity: 0.85; }
+
+  /* Zoom icon — CSS expand arrows */
+  .zoom-btn { padding: 2px; }
+  .zoom-icon {
+    display: block; width: 12px; height: 12px; position: relative;
+    border: 1px solid currentColor; border-radius: 1px;
+  }
+  .zoom-icon::after {
+    content: ''; position: absolute; top: 1px; right: 1px;
+    width: 5px; height: 5px; border-top: 1.5px solid currentColor;
+    border-right: 1.5px solid currentColor;
+  }
+  .zoom-icon.restore::after {
+    top: auto; right: auto; bottom: 1px; left: 1px;
+    border-top: none; border-right: none;
+    border-bottom: 1.5px solid currentColor;
+    border-left: 1.5px solid currentColor;
+  }
+
+  /* Close icon — CSS X */
+  .close-icon {
+    display: block; width: 10px; height: 10px; position: relative;
+  }
+  .close-icon::before, .close-icon::after {
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 10px; height: 1.5px; background: currentColor;
+  }
+  .close-icon::before { transform: translate(-50%, -50%) rotate(45deg); }
+  .close-icon::after { transform: translate(-50%, -50%) rotate(-45deg); }
 
   .term-container {
     flex: 1;
