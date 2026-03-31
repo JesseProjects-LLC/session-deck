@@ -1217,7 +1217,7 @@
     <div class="logo-wrap">
       <button class="logo" onclick={(e) => { e.stopPropagation(); toggleSettingsMenu(); }} title="Settings">
         <img class="logo-icon" src="/icon.svg" alt="" width="18" height="18" />
-        Session<span class="logo-bold">Deck</span>
+        <span class="logo-text">Session<b>Deck</b></span>
       </button>
       {#if showSettingsMenu}
         <div class="settings-dropdown" onclick={(e) => e.stopPropagation()}>
@@ -2342,7 +2342,7 @@
   }
   .logo:hover { background: var(--accent-bg-med); }
   .logo-icon { flex-shrink: 0; }
-  .logo-bold { font-weight: 800; }
+  .logo-text b { font-weight: 800; }
   .logo-wrap { position: relative; }
   .sep { width: 1px; height: 18px; background: var(--border); }
   .spacer { flex: 1; }
