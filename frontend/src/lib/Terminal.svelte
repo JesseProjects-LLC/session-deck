@@ -4,6 +4,7 @@
   import { FitAddon } from '@xterm/addon-fit';
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { ClipboardAddon } from '@xterm/addon-clipboard';
+  import { Unicode11Addon } from '@xterm/addon-unicode11';
 
   let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
@@ -133,6 +134,10 @@
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
     term.loadAddon(new ClipboardAddon());
+
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = '11';
 
     term.open(containerEl);
     fitAddon.fit();
