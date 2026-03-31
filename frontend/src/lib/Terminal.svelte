@@ -100,6 +100,7 @@
 
   onMount(() => {
     term = new Terminal({
+      allowProposedApi: true,
       cursorBlink: true,
       cursorStyle: 'block',
       fontSize: 13,
