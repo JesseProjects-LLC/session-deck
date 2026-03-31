@@ -1217,7 +1217,7 @@
     <div class="logo-wrap">
       <button class="logo" onclick={(e) => { e.stopPropagation(); toggleSettingsMenu(); }} title="Settings">
         <img class="logo-icon" src="/icon.svg" alt="" width="18" height="18" />
-        SESSION DECK
+        Session<span class="logo-bold">Deck</span>
       </button>
       {#if showSettingsMenu}
         <div class="settings-dropdown" onclick={(e) => e.stopPropagation()}>
@@ -2334,14 +2334,15 @@
     display: flex; align-items: center; gap: 8px; flex-shrink: 0;
   }
   .logo {
-    font-size: 13px; font-weight: 700; color: var(--accent);
-    font-family: 'JetBrains Mono', monospace; letter-spacing: 1px;
+    font-size: 13px; font-weight: 500; color: var(--accent);
+    font-family: 'JetBrains Mono', monospace; letter-spacing: 0;
     background: none; border: none; cursor: pointer; padding: 4px 8px;
     border-radius: 4px; transition: all 0.12s;
     display: flex; align-items: center; gap: 6px;
   }
   .logo:hover { background: var(--accent-bg-med); }
   .logo-icon { flex-shrink: 0; }
+  .logo-bold { font-weight: 800; }
   .logo-wrap { position: relative; }
   .sep { width: 1px; height: 18px; background: var(--border); }
   .spacer { flex: 1; }

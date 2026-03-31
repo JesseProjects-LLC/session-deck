@@ -1,5 +1,5 @@
 {
-  "name": "Session Deck",
+  "name": "SessionDeck",
   "short_name": "SessionDeck",
   "description": "Web-based tmux workspace manager — live terminals, drag-and-drop layouts, multi-host SSH",
   "start_url": "/",
