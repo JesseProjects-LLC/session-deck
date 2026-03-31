@@ -59,12 +59,12 @@
 ## v1.5 — In Progress
 
 ### Session Intelligence
-- [ ] Manual pane title override (rename what shows in the pane header)
-- [ ] Connection status indicators per pane (connected/reconnecting/disconnected visual)
+- [x] Manual pane title override (rename what shows in the pane header)
+- [x] Connection status indicators per pane (connected/reconnecting/disconnected visual)
 
 ### Workspace Management
 - [ ] Workspace templates: save any layout as a reusable template
-- [ ] Activity notifications: badge when background workspace has new output
+- [x] Activity notifications: badge when background workspace has new output
 
 ### Mobile / Responsive
 - [ ] Responsive view for monitoring from phone/tablet
