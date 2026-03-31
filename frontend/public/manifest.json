@@ -1,0 +1,47 @@
+{
+  "name": "Session Deck",
+  "short_name": "SessionDeck",
+  "description": "Web-based tmux workspace manager — live terminals, drag-and-drop layouts, multi-host SSH",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0e11",
+  "theme_color": "#F97316",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["developer-tools", "utilities"],
+  "shortcuts": [
+    {
+      "name": "New Workspace",
+      "url": "/?action=new-workspace",
+      "description": "Create a new workspace layout"
+    }
+  ]
+}
