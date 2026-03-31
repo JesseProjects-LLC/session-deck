@@ -1,38 +1,29 @@
 // Service worker for Session Deck PWA
-// Minimal — enables install prompt without aggressive caching.
+// Network-first for everything — the server is on the LAN, always reachable.
+// Cache exists only as offline fallback (e.g. brief server restart).
 // Terminal content is live via WebSocket, so offline mode isn't meaningful.
 
-const CACHE_NAME = 'session-deck-shell-v1';
-
-// Cache only the app shell (HTML, CSS, JS, icons) — not API or WS traffic
-const SHELL_URLS = [
-  '/',
-  '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/favicon.png',
-];
+const CACHE_NAME = 'session-deck-v2';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_URLS))
-  );
+  // Take over immediately — don't wait for old tabs to close
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  // Clean old caches
+  // Claim all clients immediately so the new SW controls existing tabs/PWA windows
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    Promise.all([
+      self.clients.claim(),
+      // Clean all old caches
+      caches.keys().then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+      ),
+    ])
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
   // Never intercept WebSocket upgrades, API calls, or auth routes
   if (
     event.request.url.includes('/ws/') ||
@@ -43,25 +34,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for HTML (always get fresh app), cache fallback for assets
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match('/'))
-    );
-    return;
-  }
-
-  // Stale-while-revalidate for static assets
+  // Network-first for everything. Cache the response for offline fallback.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetched = fetch(event.request).then((response) => {
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful responses for offline fallback
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      });
-      return cached || fetched;
-    })
+      })
+      .catch(() => {
+        // Network failed — try cache, then show a minimal offline message for navigations
+        return caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          if (event.request.mode === 'navigate') {
+            return new Response(
+              '<html><body style="background:#0b0e11;color:#c5cdd9;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>Session Deck</h2><p>Server unreachable — waiting for reconnect...</p></div></body></html>',
+              { headers: { 'Content-Type': 'text/html' } }
+            );
+          }
+          return new Response('', { status: 503 });
+        });
+      })
   );
+});
+
+// Listen for messages from the app to force update
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') {
+    self.skipWaiting();
+  }
 });

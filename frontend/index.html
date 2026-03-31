@@ -29,7 +29,27 @@
   <script type="module" src="/src/main.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        // Check for updates every 60 seconds
+        setInterval(() => reg.update(), 60000);
+
+        // When a new SW is waiting, tell it to activate immediately
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated') {
+              // New version active — reload to pick up fresh assets
+              window.location.reload();
+            }
+          });
+        });
+      }).catch(() => {});
+
+      // If the controlling SW changes (new version took over), reload
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
     }
   </script>
 </body>
