@@ -22,6 +22,12 @@
   let zoomedPane = $state(null); // { id, session, host } when a pane is zoomed
   let activitySet = $state(new Set()); // workspace IDs with unseen output
 
+  // Mobile/responsive state
+  let isMobile = $state(false);
+  let isTablet = $state(false);
+  let mobileActivePane = $state(0); // index of active pane in mobile single-pane view
+  let readOnlyMode = $state(false);
+
   // Workspace management modals
   let showNewWsModal = $state(false);
   let newWsName = $state('');
@@ -381,6 +387,7 @@
     zoomedPane = null;
     showSessionPicker = null;
     contextMenu = null;
+    mobileActivePane = 0;
     setActive(id);
     markWorkspaceSeen(id);
     updateUrlHash(id, null);
@@ -1196,9 +1203,19 @@
     // Start activity polling for workspace badges
     const unsubActivity = subscribeActivity(set => { activitySet = set; });
     startActivityPolling();
+
+    // Viewport detection for responsive layout
+    function checkViewport() {
+      isMobile = window.innerWidth < 768;
+      isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+    }
+    checkViewport();
+    window.addEventListener('resize', checkViewport);
+
     return () => {
       unsubActivity();
       stopActivityPolling();
+      window.removeEventListener('resize', checkViewport);
     };
   });
 
@@ -1302,6 +1319,39 @@
             onContextMenu={(e) => handlePaneContextMenu(e, [], zoomedPane.session, zoomedPane.host)}
           />
         </div>
+      {:else if isMobile && activeLayout && activeId}
+        <!-- Mobile: single pane with bottom tab switcher -->
+        {@const panes = getSessionPanes(activeLayout)}
+        {#if panes.length > 0}
+          {#key `${activeId}-${mobileActivePane}`}
+            <div class="mobile-pane">
+              <Terminal
+                session={panes[mobileActivePane % panes.length].session}
+                host={panes[mobileActivePane % panes.length].host}
+                focused={true}
+                sessionTypeColor={getTypeInfo(panes[mobileActivePane % panes.length].session).color}
+                sessionTypeLabel={getTypeInfo(panes[mobileActivePane % panes.length].session).label}
+                sessionContext={getTypeInfo(panes[mobileActivePane % panes.length].session).context}
+                onSessionClick={() => openSessionPicker([], panes[mobileActivePane % panes.length].session)}
+                onContextMenu={(e) => handlePaneContextMenu(e, [], panes[mobileActivePane % panes.length].session, panes[mobileActivePane % panes.length].host)}
+              />
+            </div>
+          {/key}
+          <div class="mobile-pane-tabs">
+            {#each panes as pane, i}
+              <button
+                class="mobile-pane-tab"
+                class:active={mobileActivePane === i}
+                onclick={() => mobileActivePane = i}
+              >
+                <span class="mobile-tab-dot" style="background:{getTypeInfo(pane.session).color}"></span>
+                <span class="mobile-tab-name">{pane.session}</span>
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <div class="center-msg">No panes</div>
+        {/if}
       {:else if activeLayout && activeId}
         {#key activeId}
           <SplitPane
@@ -3235,5 +3285,64 @@
   }
   .palette-empty {
     padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;
+  }
+  /* ---- Mobile single-pane view ---- */
+  .mobile-pane {
+    flex: 1; overflow: hidden; display: flex; flex-direction: column;
+  }
+  .mobile-pane-tabs {
+    display: flex; gap: 2px; padding: 4px 8px;
+    background: var(--bg-raised); border-top: 1px solid var(--border);
+    overflow-x: auto; flex-shrink: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mobile-pane-tab {
+    display: flex; align-items: center; gap: 4px;
+    padding: 6px 10px; border-radius: 4px; border: 1px solid transparent;
+    background: transparent; color: var(--text-secondary); font-size: 11px;
+    font-family: 'JetBrains Mono', monospace; cursor: pointer;
+    white-space: nowrap; flex-shrink: 0; transition: all 0.12s;
+  }
+  .mobile-pane-tab:hover { color: var(--text-primary); }
+  .mobile-pane-tab.active {
+    color: var(--accent); background: var(--accent-bg);
+    border-color: var(--accent-border);
+  }
+  .mobile-tab-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .mobile-tab-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- Responsive breakpoints ---- */
+  @media (max-width: 767px) {
+    /* Mobile: compact topnav */
+    .topnav { height: 34px; padding: 0 8px; gap: 4px; }
+    .logo { font-size: 11px; padding: 2px 6px; gap: 4px; }
+    .logo-icon { width: 14px; height: 14px; }
+    .ws-tabs { gap: 1px; overflow-x: auto; flex-shrink: 1; min-width: 0; }
+    .wt { padding: 3px 8px; font-size: 11px; }
+    .wt .cnt { display: none; }
+    .add-btn { padding: 2px 6px; font-size: 14px; }
+    .topnav-btn { display: none; }
+    .pane-count { display: none; }
+    .auth-user { display: none; }
+    .auth-logout { display: none; }
+    .spacer { flex: 0; }
+
+    /* Hide properties panel on mobile */
+    .props-panel { display: none; }
+
+    /* Compact status bar */
+    .statusbar { height: 20px; padding: 0 8px; font-size: 9px; }
+
+    /* Content padding */
+    .content { padding: 1px; }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    /* Tablet: slightly compact */
+    .topnav { padding: 0 8px; }
+    .wt { padding: 4px 10px; font-size: 11px; }
+    .props-panel { width: 220px; }
   }
 </style>

@@ -67,8 +67,8 @@
 - [x] Activity notifications: badge when background workspace has new output
 
 ### Mobile / Responsive
-- [ ] Responsive view for monitoring from phone/tablet
-- [ ] Vertical tiling for narrow viewports
+- [x] Responsive view for monitoring from phone/tablet
+- [x] Vertical tiling for narrow viewports
 - [ ] Read-only mode for mobile (view output, no input)
 
 ---
