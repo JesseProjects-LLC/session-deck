@@ -19,6 +19,7 @@ import terminalWsRoutes from './routes/terminal-ws.js';
 import workspaceRoutes from './routes/workspaces.js';
 import settingsRoutes from './routes/settings.js';
 import activityRoutes from './routes/activity.js';
+import templateRoutes from './routes/templates.js';
 
 export async function buildServer() {
   const fastify = Fastify({
@@ -103,6 +104,7 @@ export async function buildServer() {
   await fastify.register(workspaceRoutes);
   await fastify.register(settingsRoutes);
   await fastify.register(activityRoutes);
+  await fastify.register(templateRoutes);
 
   // Load dynamic session type map after DB is ready
   const { loadTypeMap } = await import('./services/tmux.js');

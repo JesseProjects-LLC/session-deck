@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
   import Terminal from './lib/Terminal.svelte';
-  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, getSessionPanes, movePane } from './lib/stores/layout.js';
+  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, getSessionPanes, movePane, applySessionsToTemplate } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
@@ -49,6 +49,11 @@
   // Settings menu/panel
   let showSettingsMenu = $state(false);
   let settingsSection = $state(null); // 'servers' | 'sessions' | 'appearance' | 'help' | null
+
+  // Workspace templates
+  let templates = $state([]);
+  let showSaveTemplateModal = $state(null); // workspace id to save as template
+  let saveTemplateName = $state('');
 
   // Host management state
   let managedHosts = $state([]);
@@ -252,6 +257,56 @@
     }
   }
 
+  async function loadTemplates() {
+    try {
+      const res = await fetch('/api/templates');
+      const data = await res.json();
+      templates = data.templates || [];
+    } catch { /* ignore */ }
+  }
+
+  async function saveAsTemplate(workspaceId) {
+    const ws = workspaces.find(w => w.id === workspaceId);
+    if (!ws) return;
+    saveTemplateName = ws.name;
+    showSaveTemplateModal = workspaceId;
+    contextMenu = null;
+  }
+
+  async function handleSaveTemplate() {
+    if (!saveTemplateName.trim() || !showSaveTemplateModal) return;
+    const ws = workspaces.find(w => w.id === showSaveTemplateModal);
+    if (!ws) return;
+
+    try {
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: saveTemplateName.trim(), layout: ws.layout }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save');
+      }
+      showSaveTemplateModal = null;
+      await loadTemplates();
+      toast(`Saved template "${saveTemplateName.trim()}"`, 'success');
+    } catch (e) {
+      toast(e.message || 'Failed to save template', 'error');
+    }
+  }
+
+  async function deleteTemplate(id, name) {
+    try {
+      const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed');
+      await loadTemplates();
+      toast(`Deleted template "${name}"`, 'success');
+    } catch (e) {
+      toast('Failed to delete template', 'error');
+    }
+  }
+
   async function loadSessions() {
     try {
       // Load local sessions first (fast), then remote hosts in background
@@ -294,6 +349,7 @@
     await loadAppSettings();
     await loadSessions();
     await loadWorkspaces();
+    await loadTemplates();
 
     // Check if user is authenticated (auth might be disabled)
     try {
@@ -462,8 +518,21 @@
   async function handleCreateWorkspace() {
     if (!newWsName.trim()) return;
     const sessionNames = sessions.map(s => s.name);
-    const layouts = presets(sessionNames.length ? sessionNames : ['main', 'homelab', 'onsite', 'business']);
-    const layout = layouts[newWsPreset] || layouts.quad;
+    const fallbackNames = sessionNames.length ? sessionNames : ['main', 'homelab', 'onsite', 'business'];
+
+    let layout;
+    // Check if a template is selected (prefixed with 'tpl:')
+    if (newWsPreset.startsWith('tpl:')) {
+      const tplId = parseInt(newWsPreset.slice(4), 10);
+      const tpl = templates.find(t => t.id === tplId);
+      if (tpl) {
+        layout = applySessionsToTemplate(tpl.layout, fallbackNames);
+      }
+    }
+    if (!layout) {
+      const layouts = presets(fallbackNames);
+      layout = layouts[newWsPreset] || layouts.quad;
+    }
     try {
       await createWorkspace(newWsName.trim(), layout);
       showNewWsModal = false;
@@ -872,6 +941,7 @@
     cmds.push({ id: 'settings-sessions', label: 'Settings: Sessions', action: () => openSettingsSection('sessions'), category: 'Settings' });
     cmds.push({ id: 'settings-appearance', label: 'Settings: Appearance', action: () => openSettingsSection('appearance'), category: 'Settings' });
     cmds.push({ id: 'settings-help', label: 'Settings: Help', action: () => openSettingsSection('help'), category: 'Settings' });
+    if (activeId) cmds.push({ id: 'save-template', label: 'Save workspace as template', action: () => saveAsTemplate(activeId), category: 'Workspace' });
 
     return cmds;
   }
@@ -1763,6 +1833,7 @@
     <div class="ctx-menu" style="left:{contextMenu.x}px;top:{contextMenu.y}px">
       <button class="ctx-item" onclick={() => openRename(contextMenu.id)}>Rename</button>
       <button class="ctx-item" onclick={() => handleDuplicate(contextMenu.id)}>Duplicate</button>
+      <button class="ctx-item" onclick={() => saveAsTemplate(contextMenu.id)}>Save as Template</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item danger" onclick={() => openDeleteConfirm(contextMenu.id)}>Delete</button>
     </div>
@@ -1929,6 +2000,19 @@
               >{p}</button>
             {/each}
           </div>
+          {#if templates.length > 0}
+            <label class="field-label">Saved templates</label>
+            <div class="preset-grid">
+              {#each templates as tpl}
+                <button
+                  class="preset-btn template-btn"
+                  class:active={newWsPreset === `tpl:${tpl.id}`}
+                  onclick={() => newWsPreset = `tpl:${tpl.id}`}
+                  title="{tpl.paneCount} panes"
+                >{tpl.name} <span class="tpl-cnt">{tpl.paneCount}p</span></button>
+              {/each}
+            </div>
+          {/if}
           <button class="action-btn" onclick={handleCreateWorkspace} disabled={!newWsName.trim()}>Create</button>
         </div>
       </div>
@@ -1965,6 +2049,33 @@
           <div class="btn-row">
             <button class="action-btn secondary" onclick={() => showDeleteConfirm = null}>Cancel</button>
             <button class="action-btn danger" onclick={handleDelete}>Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Save as Template modal -->
+  {#if showSaveTemplateModal}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="picker-overlay modal-top" role="dialog" tabindex="-1" onclick={() => showSaveTemplateModal = null}>
+      <div class="picker" style="width:320px" onclick={(e) => e.stopPropagation()}>
+        <div class="picker-hdr">
+          <span>Save as Template</span>
+          <button class="picker-close" onclick={() => showSaveTemplateModal = null}>&times;</button>
+        </div>
+        <div class="modal-body">
+          <label class="field-label">Template name</label>
+          <input
+            class="field-input"
+            bind:value={saveTemplateName}
+            placeholder="My layout"
+            onkeydown={(e) => e.key === 'Enter' && handleSaveTemplate()}
+          />
+          <p class="help-text">Saves the pane layout structure. Session assignments are not included — they'll be auto-assigned when creating a workspace from this template.</p>
+          <div class="btn-row">
+            <button class="action-btn secondary" onclick={() => showSaveTemplateModal = null}>Cancel</button>
+            <button class="action-btn" onclick={handleSaveTemplate} disabled={!saveTemplateName.trim()}>Save Template</button>
           </div>
         </div>
       </div>
@@ -2421,6 +2532,8 @@
   }
   .preset-btn:hover { border-color: var(--accent); color: var(--text-primary); }
   .preset-btn.active { border-color: var(--accent); background: var(--accent-bg-med); color: var(--accent); }
+  .template-btn { border-style: dashed; }
+  .tpl-cnt { font-size: 9px; opacity: 0.6; margin-left: 2px; }
 
   .action-btn {
     padding: 8px 16px; border-radius: 6px; border: none;
@@ -2435,6 +2548,7 @@
   .action-btn.danger:hover { background: var(--danger); }
 
   .confirm-text { color: var(--text-primary); font-size: 13px; margin: 0; }
+  .help-text { color: var(--text-muted); font-size: 11px; margin: 6px 0 0; line-height: 1.4; }
   .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
 
   .toast-container {

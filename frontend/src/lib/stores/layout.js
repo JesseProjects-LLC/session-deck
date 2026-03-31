@@ -109,6 +109,26 @@ export function getSessionPanes(node) {
 }
 
 /**
+ * Apply real session names to a template layout.
+ * Replaces placeholder session names with names from the provided list,
+ * cycling if there are more panes than sessions.
+ */
+export function applySessionsToTemplate(node, sessionNames, counter = { i: 0 }) {
+  if (node.session) {
+    const name = sessionNames[counter.i % sessionNames.length] || 'main';
+    counter.i++;
+    return { ...node, session: name };
+  }
+  if (node.children) {
+    return {
+      ...node,
+      children: node.children.map(c => applySessionsToTemplate(c, sessionNames, counter)),
+    };
+  }
+  return node;
+}
+
+/**
  * Remove a pane at the given path from the layout tree.
  * Returns the new root node (may collapse parent splits).
  * Returns null if the last pane is removed.

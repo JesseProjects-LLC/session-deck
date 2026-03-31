@@ -152,4 +152,17 @@ function migrate(db) {
   if (!accentSetting) {
     db.prepare("INSERT INTO app_settings (key, value) VALUES ('accent_color', '#F97316')").run();
   }
+
+  // Workspace templates table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT,
+      layout_json TEXT NOT NULL,
+      pane_count INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
 }

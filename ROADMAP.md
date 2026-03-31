@@ -63,7 +63,7 @@
 - [x] Connection status indicators per pane (connected/reconnecting/disconnected visual)
 
 ### Workspace Management
-- [ ] Workspace templates: save any layout as a reusable template
+- [x] Workspace templates: save any layout as a reusable template
 - [x] Activity notifications: badge when background workspace has new output
 
 ### Mobile / Responsive
