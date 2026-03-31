@@ -2332,6 +2332,20 @@
     height: 38px; padding: 0 12px;
     background: var(--bg-raised); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    /* PWA Window Controls Overlay: make topnav the draggable title bar */
+    app-region: drag;
+    -webkit-app-region: drag;
+    /* Account for window controls overlay area */
+    padding-left: env(titlebar-area-x, 12px);
+    padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 12px);
+    height: env(titlebar-area-height, 38px);
+    min-height: 38px;
+  }
+  /* All interactive elements inside topnav must opt out of drag */
+  .topnav button, .topnav input, .topnav a, .topnav select,
+  .ws-tabs, .settings-dropdown {
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
   }
   .logo {
     font-size: 13px; font-weight: 700; color: var(--accent);
