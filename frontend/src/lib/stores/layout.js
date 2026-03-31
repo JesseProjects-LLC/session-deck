@@ -99,6 +99,16 @@ export function getSessionNames(node) {
 }
 
 /**
+ * Get all session+host pairs from a layout tree.
+ * Returns array of { session, host } objects.
+ */
+export function getSessionPanes(node) {
+  if (node.session) return [{ session: node.session, host: node.host || 'reliant' }];
+  if (node.children) return node.children.flatMap(c => getSessionPanes(c));
+  return [];
+}
+
+/**
  * Remove a pane at the given path from the layout tree.
  * Returns the new root node (may collapse parent splits).
  * Returns null if the last pane is removed.

@@ -9,6 +9,7 @@
     createWorkspace, deleteWorkspace, renameWorkspace, duplicateWorkspace,
     renameSessionInWorkspaces, updatePaneTitle,
   } from './lib/stores/workspaces.js';
+  import { subscribeActivity, startActivityPolling, stopActivityPolling, markWorkspaceSeen } from './lib/stores/activity.js';
 
   let sessions = $state([]);
   let workspaces = $state([]);
@@ -19,6 +20,7 @@
   let showSessionPicker = $state(null);
   let showPropsPanel = $state(false);
   let zoomedPane = $state(null); // { id, session, host } when a pane is zoomed
+  let activitySet = $state(new Set()); // workspace IDs with unseen output
 
   // Workspace management modals
   let showNewWsModal = $state(false);
@@ -324,6 +326,7 @@
     showSessionPicker = null;
     contextMenu = null;
     setActive(id);
+    markWorkspaceSeen(id);
     updateUrlHash(id, null);
   }
 
@@ -1095,11 +1098,19 @@
 
   onMount(() => {
     window.addEventListener('keydown', handleKeydown);
+    // Start activity polling for workspace badges
+    const unsubActivity = subscribeActivity(set => { activitySet = set; });
+    startActivityPolling();
+    return () => {
+      unsubActivity();
+      stopActivityPolling();
+    };
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleKeydown);
     clearInterval(refreshTimer);
+    stopActivityPolling();
   });
 
   $effect(() => { init(); });
@@ -1145,10 +1156,14 @@
         <button
           class="wt"
           class:active={ws.id === activeId}
+          class:has-activity={activitySet.has(ws.id)}
           onclick={() => switchWorkspace(ws.id)}
           oncontextmenu={(e) => openContextMenu(e, ws.id)}
           title="{ws.description || ws.name} (Alt+{i + 1})"
         >
+          {#if activitySet.has(ws.id)}
+            <span class="activity-dot"></span>
+          {/if}
           {ws.name}
           <span class="cnt" title="{countPanes(ws.layout)} panes">{countPanes(ws.layout)}p</span>
         </button>
@@ -2174,11 +2189,23 @@
     padding: 5px 12px; border-radius: 6px; border: 1px solid transparent;
     background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 500;
     cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.12s;
-    display: flex; align-items: center; gap: 4px;
+    display: flex; align-items: center; gap: 4px; position: relative;
   }
   .wt:hover { color: var(--text-primary); }
   .wt.active { color: var(--accent); background: var(--accent-bg); border-color: var(--accent-border); }
+  .wt.has-activity { color: var(--text-primary); }
   .wt .cnt { font-size: 10px; color: var(--text-muted); }
+  .activity-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent, #F97316);
+    box-shadow: 0 0 6px var(--accent, #F97316);
+    flex-shrink: 0;
+    animation: activity-pulse 2s ease-in-out infinite;
+  }
+  @keyframes activity-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
   .add-btn { font-size: 16px; padding: 3px 10px; color: var(--text-muted); }
   .add-btn:hover { color: var(--accent); }
   .pane-count { font-size: 11px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }

@@ -5,7 +5,8 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-const SESSION_FORMAT = '#{session_name}|#{session_windows}|#{session_attached}|#{session_created}';
+const SESSION_FORMAT = '#{session_name}|#{session_windows}|#{session_attached}|#{session_created}|#{session_activity}';
+const ACTIVITY_FORMAT = '#{session_name}|#{session_activity}';
 const PANE_FORMAT = '#{pane_current_command}';
 const PANE_PATH_FORMAT = '#{pane_current_path}';
 
@@ -56,7 +57,7 @@ export async function listSessions(host, options = {}) {
 
     const sessions = [];
     for (const line of rawSessions.trim().split('\n')) {
-      const [name, windows, attached, created] = line.split('|');
+      const [name, windows, attached, created, activity] = line.split('|');
       if (!name) continue;
 
       const type = await detectType(host, name, timeout);
@@ -68,6 +69,7 @@ export async function listSessions(host, options = {}) {
         attached: parseInt(attached, 10) > 0,
         attachedCount: parseInt(attached, 10),
         created: parseInt(created, 10) * 1000, // epoch ms
+        lastActivity: parseInt(activity, 10) * 1000, // epoch ms
         type,
         workingDir: context.workingDir,
         repoName: context.repoName,
@@ -95,6 +97,53 @@ export async function listAllSessions(hosts, options = {}) {
   return results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
     return result(hosts[i].name, 'error', [], Date.now(), r.reason?.message);
+  });
+}
+
+/**
+ * Lightweight activity-only query. Returns just session names + lastActivity timestamps.
+ * Skips type detection, context detection — intended for high-frequency polling.
+ * @param {object} host
+ * @param {object} [options]
+ * @returns {Promise<{host: string, sessions: Array<{name: string, lastActivity: number}>, error?: string}>}
+ */
+export async function listActivity(host, options = {}) {
+  const timeout = options.timeout || 3000;
+  try {
+    const raw = host.isLocal
+      ? await execLocal(['list-sessions', '-F', ACTIVITY_FORMAT], timeout)
+      : await execRemote(host, `tmux list-sessions -F '${ACTIVITY_FORMAT}'`, timeout);
+
+    if (!raw.trim()) return { host: host.name, sessions: [] };
+
+    const sessions = [];
+    for (const line of raw.trim().split('\n')) {
+      const [name, activity] = line.split('|');
+      if (!name) continue;
+      sessions.push({
+        name,
+        lastActivity: parseInt(activity, 10) * 1000,
+      });
+    }
+    return { host: host.name, sessions };
+  } catch (err) {
+    return { host: host.name, sessions: [], error: err.message };
+  }
+}
+
+/**
+ * Query activity timestamps from all hosts in parallel.
+ * @param {Array<object>} hosts
+ * @param {object} [options]
+ * @returns {Promise<Array<{host: string, sessions: Array}>>}
+ */
+export async function listAllActivity(hosts, options = {}) {
+  const results = await Promise.allSettled(
+    hosts.map(host => listActivity(host, options))
+  );
+  return results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value;
+    return { host: hosts[i].name, sessions: [], error: r.reason?.message };
   });
 }
 
