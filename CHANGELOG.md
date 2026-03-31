@@ -2,6 +2,21 @@
 
 All notable changes to Session Deck will be documented in this file.
 
+## [0.2.0] — 2026-03-30
+
+### Added
+- **Activity notifications** — Pulsing orange dot on workspace tabs when background sessions have new output
+  - Polls tmux `session_activity` timestamps every 10 seconds (lightweight — no type/context detection)
+  - Badge clears instantly when you switch to that workspace
+  - `/api/activity` endpoint for fast activity-only queries across all hosts
+- **Pane title override** — Right-click a pane header → Rename Pane to set a custom label
+  - Leave empty to revert to auto-detected name (git repo / directory)
+- **Connection status indicators** — Each pane shows LIVE / CONNECTING / Disconnected badge
+- **PWA support** — Install Session Deck as a standalone app from Edge or Chrome
+  - Pin to taskbar, gets its own window and Alt+Tab entry
+  - Web manifest with multiple icon sizes + maskable variants
+  - Minimal service worker (network-first for HTML, stale-while-revalidate for assets)
+
 ## [0.1.0] — 2026-03-30
 
 ### Added

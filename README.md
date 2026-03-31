@@ -29,10 +29,12 @@ Session Deck gives you a browser-based dashboard for your tmux sessions. Each pa
 - 🔀 Drag-and-drop pane rearrangement (swap or directional split)
 - 🗂️ Multiple workspaces with 6 built-in presets (or build your own)
 - 🌐 Multi-host support — manage tmux on any SSH-accessible machine
+- 🔔 Activity notifications — pulsing badge when background workspaces have new output
 - 🔍 SSH connectivity testing with tmux detection and setup guidance
 - ⌨️ Keyboard shortcuts for everything
 - 📋 Clean copy/paste from terminal panes
 - 💾 Persistent workspaces and host configuration (SQLite)
+- 📱 PWA — install as a standalone app, pin to taskbar
 - 🚀 First-run setup wizard for new installations
 
 ## Quick Start
@@ -258,6 +260,22 @@ Select text with the mouse in any terminal pane, then:
 - `Ctrl+V` — paste from clipboard
 - Right-click also provides copy/paste options
 
+### Activity Notifications
+
+When a tmux session produces output in a workspace you're not currently viewing, that workspace tab shows a pulsing orange dot. Switch to the workspace to clear the badge.
+
+Session Deck polls tmux `session_activity` timestamps every 10 seconds using a lightweight API endpoint (`/api/activity`) that skips type and context detection — typically completes in under 50ms for local sessions.
+
+### Install as Standalone App
+
+Session Deck is a PWA — you can install it as a standalone app from Edge or Chrome:
+
+1. Open Session Deck in your browser
+2. Click the install icon in the address bar (or **⋮ → Install Session Deck**)
+3. Right-click the taskbar icon → **Pin to taskbar**
+
+The app runs in its own window with no browser chrome, has its own Alt+Tab entry, and shows the Session Deck icon in the taskbar.
+
 ### Settings Menu
 
 Click the **SESSION DECK** logo in the top-left to access:
@@ -319,7 +337,10 @@ Session Deck Server (Node.js)
 | POST | `/api/managed-hosts/import-ssh-config` | Import hosts from SSH config |
 | POST | `/api/managed-hosts/:id/test` | Test host connectivity |
 | POST | `/api/managed-hosts/test-all` | Test all hosts |
-| WS | `/ws/terminal/:host/:session` | Terminal WebSocket |
+| GET | `/api/activity` | Session activity timestamps (lightweight polling) |
+| GET | `/api/settings` | App settings |
+| GET | `/api/session-types` | Session type color mappings |
+| WS | `/ws/terminal` | Terminal WebSocket |
 
 ## License
 

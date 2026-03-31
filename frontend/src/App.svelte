@@ -1688,6 +1688,18 @@
                 <div class="help-row"><kbd>Ctrl+C</kbd><span>Copy selection (when text selected)</span></div>
                 <div class="help-row"><kbd>Ctrl+V</kbd><span>Paste from clipboard</span></div>
               </div>
+              <div class="help-group">
+                <span class="help-group-title">Activity Notifications</span>
+                <div class="help-row"><span class="help-label">Orange dot</span><span>Workspace tab has unseen terminal output</span></div>
+                <div class="help-row"><span class="help-label">Pulsing</span><span>Dot pulses gently — new output since you last viewed</span></div>
+                <div class="help-row"><span class="help-label">Auto-clear</span><span>Badge disappears when you switch to that workspace</span></div>
+                <div class="help-row"><span class="help-label">Polling</span><span>Checks tmux activity every 10 seconds</span></div>
+              </div>
+              <div class="help-group">
+                <span class="help-group-title">Install as App</span>
+                <div class="help-row"><span class="help-label">Edge/Chrome</span><span>Click install icon in address bar → Pin to taskbar</span></div>
+                <div class="help-row"><span class="help-label">Standalone</span><span>Runs as its own window with no browser chrome</span></div>
+              </div>
               <div class="help-about">
                 <img class="help-about-icon" src="/icon.svg" alt="Session Deck" width="48" height="48" />
                 <span class="help-about-title">Session Deck</span>
