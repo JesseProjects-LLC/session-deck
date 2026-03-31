@@ -102,4 +102,61 @@ export default async function sessionsRoutes(fastify) {
       return reply.code(err.statusCode || 500).send({ error: err.message });
     }
   });
+
+  // Send a rendering test to a tmux session
+  fastify.post('/api/sessions/:hostName/:sessionName/render-test', async (request, reply) => {
+    const { hostName, sessionName } = request.params;
+    const host = findHost(hostName);
+    if (!host) return reply.code(404).send({ error: `Host not found: ${hostName}` });
+
+    // The test string — covers ASCII, Unicode, box-drawing, emoji, math symbols
+    const lines = [
+      `echo ''`,
+      `echo '╔══════════════════════════════════════╗'`,
+      `echo '║   Session Deck — Rendering Test      ║'`,
+      `echo '╚══════════════════════════════════════╝'`,
+      `echo ''`,
+      `echo 'ASCII:      Hello World [OK] {pass} (done)'`,
+      `echo 'Arrows:     ← → ↑ ↓ ⇒ ⇐ ➜'`,
+      `echo 'Box light:  ┌─┬─┐│ ││ │└─┴─┘'`,
+      `echo 'Box heavy:  ┏━┳━┓┃ ┃┃ ┃┗━┻━┛'`,
+      `echo 'Symbols:    ✓ ✗ ● ○ ◆ ◇ ★ ☆ ⚡ ⚙ ▶ ◀'`,
+      `echo 'Emoji:      🔥 🚀 📦 ✅ ❌ 🎉 💾 🔧 🔔 📱'`,
+      `echo 'Blocks:     ▓▒░ ████ ▀▄▐▌'`,
+      `echo 'Math:       ≤ ≥ ≠ ± ∞ √ ∑ ∏ ∫ ∂'`,
+      `echo 'Braille:    ⣿⡇⠿⠛⠉⠁'`,
+      `echo 'Powerline:     '`,
+      `echo ''`,
+      `echo 'If all lines render correctly with no clipping,'`,
+      `echo 'your terminal font supports the full glyph set.'`,
+      `echo ''`,
+    ];
+
+    try {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+
+      for (const line of lines) {
+        if (host.isLocal) {
+          await execFileAsync('tmux', ['send-keys', '-t', sessionName, line, 'Enter'], { timeout: 2000 });
+        } else {
+          const sshArgs = [
+            '-o', 'ConnectTimeout=3', '-o', 'BatchMode=yes',
+            '-o', 'StrictHostKeyChecking=accept-new',
+          ];
+          if (host.identityFile) sshArgs.push('-i', host.identityFile.replace('~', process.env.HOME));
+          const userHost = host.user ? `${host.user}@${host.hostname}` : host.hostname;
+          sshArgs.push(userHost, `tmux send-keys -t '${sessionName}' '${line.replace(/'/g, "'\\''")}' Enter`);
+          await execFileAsync('ssh', sshArgs, { timeout: 5000 });
+        }
+        // Small delay between lines to avoid overwhelming the terminal
+        await new Promise(r => setTimeout(r, 50));
+      }
+
+      return { success: true, host: hostName, session: sessionName, lines: lines.length };
+    } catch (err) {
+      return reply.code(500).send({ error: `Failed to send render test: ${err.message}` });
+    }
+  });
 }

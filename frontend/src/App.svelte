@@ -2,7 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
   import Terminal from './lib/Terminal.svelte';
-  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, movePane } from './lib/stores/layout.js';
+  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, getSessionPanes, movePane } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
@@ -543,6 +543,31 @@
 
   function closeSettingsPanel() {
     settingsSection = null;
+  }
+
+  let renderTestLoading = $state(false);
+
+  async function runRenderTest() {
+    // Find the first pane in the active workspace
+    if (!activeLayout) { toast('No active workspace', 'error'); return; }
+    const panes = getSessionPanes(activeLayout);
+    if (!panes.length) { toast('No panes in workspace', 'error'); return; }
+    const { session, host } = panes[0];
+
+    renderTestLoading = true;
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(host)}/${encodeURIComponent(session)}/render-test`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed');
+      }
+      toast(`Render test sent to ${session} on ${host}`, 'success');
+      closeSettingsPanel();
+    } catch (e) {
+      toast('Render test failed: ' + e.message, 'error');
+    } finally {
+      renderTestLoading = false;
+    }
   }
 
   function settingsSectionTitle(section) {
@@ -1700,6 +1725,19 @@
                 <div class="help-row"><span class="help-label">Edge/Chrome</span><span>Click install icon in address bar → Pin to taskbar</span></div>
                 <div class="help-row"><span class="help-label">Standalone</span><span>Runs as its own window with no browser chrome</span></div>
               </div>
+              <div class="help-group">
+                <span class="help-group-title">Terminal Rendering</span>
+                <div class="help-row"><span class="help-label">Font stack</span><span>JetBrains Mono → Cascadia Code → Fira Code → system</span></div>
+                <div class="help-row"><span class="help-label">Wide chars</span><span>Emoji &amp; CJK render at double-width (Unicode 11)</span></div>
+                <div class="help-row">
+                  <button
+                    class="help-test-btn"
+                    onclick={runRenderTest}
+                    disabled={renderTestLoading}
+                  >{renderTestLoading ? 'Sending...' : 'Run Glyph Test'}</button>
+                  <span>Sends test output to the first pane in this workspace</span>
+                </div>
+              </div>
               <div class="help-about">
                 <img class="help-about-icon" src="/icon.svg" alt="Session Deck" width="48" height="48" />
                 <span class="help-about-title">Session Deck</span>
@@ -2768,6 +2806,16 @@
     font-size: 11px; color: var(--text-secondary); min-width: 100px;
     font-family: 'JetBrains Mono', monospace;
   }
+  .help-test-btn {
+    font-size: 11px; padding: 4px 12px; border-radius: 4px;
+    border: 1px solid var(--accent-border, rgba(249,115,22,0.3));
+    background: var(--accent-bg, rgba(249,115,22,0.08));
+    color: var(--accent, #F97316); cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-weight: 500;
+    transition: all 0.12s; min-width: 100px;
+  }
+  .help-test-btn:hover { background: var(--accent-bg-strong, rgba(249,115,22,0.15)); }
+  .help-test-btn:disabled { opacity: 0.5; cursor: default; }
   .help-about {
     margin-top: 12px; padding-top: 16px; border-top: 1px solid var(--border);
     display: flex; flex-direction: column; gap: 4px; text-align: center;
