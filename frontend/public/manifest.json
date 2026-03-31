@@ -4,7 +4,6 @@
   "description": "Web-based tmux workspace manager — live terminals, drag-and-drop layouts, multi-host SSH",
   "start_url": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay"],
   "background_color": "#0b0e11",
   "theme_color": "#0b0e11",
   "orientation": "any",

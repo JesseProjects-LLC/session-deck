@@ -2252,19 +2252,23 @@
   </div>
 
   <footer class="statusbar">
-    <span>workspace: <span class="ws-name">{activeName()}</span></span>
-    <span class="sep-dot">&middot;</span>
-    <span>{activeLayout ? countPanes(activeLayout) : 0} panes</span>
-    <span class="sep-dot">&middot;</span>
-    <button class="shortcut-btn" onclick={openSessionManager}>{sessions.length} sessions</button>
+    {#if focusedId}
+      {@const fi = getFocusedSession()}
+      {@const fh = getFocusedHost()}
+      {#if fi}
+        <span class="sb-focused" title="Focused pane">
+          <span class="sb-dot" style="background:{getTypeInfo(fi.name).color}"></span>
+          <span class="sb-session">{fi.name}</span>
+          <span class="sb-host">{fh}</span>
+        </span>
+      {/if}
+    {:else}
+      <span class="sb-hint">Click a pane to focus</span>
+    {/if}
     <span class="spacer"></span>
-    <button class="shortcut-btn" onclick={() => {
-      const idx = workspaces.findIndex(w => w.id === activeId);
-      const next = (idx + 1) % workspaces.length;
-      switchWorkspace(workspaces[next].id);
-    }}><kbd>Alt+1-9</kbd> workspace</button>
-    <button class="shortcut-btn" onclick={openNewWsModal}><kbd>N</kbd> new workspace</button>
-    <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>I</kbd> properties</button>
+    <button class="shortcut-btn" onclick={openCommandPalette}><kbd>Ctrl+K</kbd></button>
+    <button class="shortcut-btn" onclick={openNewWsModal}><kbd>N</kbd></button>
+    <button class="shortcut-btn" onclick={() => showPropsPanel = !showPropsPanel}><kbd>I</kbd></button>
     <button class="shortcut-btn" onclick={() => {
       if (zoomedPane) { zoomedPane = null; }
       else if (focusedId) {
@@ -2272,11 +2276,7 @@
         const s = r.join(':');
         if (s && !s.startsWith('split-')) handleZoom(focusedId, s, h);
       }
-    }}><kbd>Ctrl+Shift+F</kbd> {zoomedPane ? 'unzoom' : 'zoom'}</button>
-    {#if zoomedPane}
-      <button class="shortcut-btn" onclick={() => zoomedPane = null}><kbd>Esc</kbd> unzoom</button>
-    {/if}
-    <button class="shortcut-btn" onclick={openCommandPalette}><kbd>Ctrl+K</kbd> commands</button>
+    }}><kbd>Ctrl+Shift+F</kbd></button>
   </footer>
 </div>
 
@@ -2332,20 +2332,6 @@
     height: 38px; padding: 0 12px;
     background: var(--bg-raised); border-bottom: 1px solid var(--border);
     display: flex; align-items: center; gap: 8px; flex-shrink: 0;
-    /* PWA Window Controls Overlay: make topnav the draggable title bar */
-    app-region: drag;
-    -webkit-app-region: drag;
-    /* Account for window controls overlay area */
-    padding-left: env(titlebar-area-x, 12px);
-    padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 12px);
-    height: env(titlebar-area-height, 38px);
-    min-height: 38px;
-  }
-  /* All interactive elements inside topnav must opt out of drag */
-  .topnav button, .topnav input, .topnav a, .topnav select,
-  .ws-tabs, .settings-dropdown {
-    app-region: no-drag;
-    -webkit-app-region: no-drag;
   }
   .logo {
     font-size: 13px; font-weight: 700; color: var(--accent);
@@ -2584,14 +2570,17 @@
   }
 
   .statusbar {
-    height: 24px; padding: 0 16px;
+    height: 24px; padding: 0 12px;
     background: var(--bg-raised); border-top: 1px solid var(--border);
     display: flex; align-items: center; gap: 8px;
     font-size: 10px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;
     flex-shrink: 0;
   }
-  .ws-name { color: var(--accent); }
-  .sep-dot { color: #1e2530; }
+  .sb-focused { display: flex; align-items: center; gap: 5px; }
+  .sb-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .sb-session { color: var(--text-primary); font-weight: 500; }
+  .sb-host { color: var(--text-muted); }
+  .sb-hint { color: var(--text-muted); font-style: italic; }
   .shortcut-btn {
     display: flex; align-items: center; gap: 3px;
     background: none; border: none; color: var(--text-muted); cursor: pointer;
