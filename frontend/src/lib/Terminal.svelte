@@ -31,43 +31,46 @@
     connecting = true;
     error = null;
 
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${window.location.host}/ws/terminal?session=${encodeURIComponent(session)}&host=${encodeURIComponent(host)}&cols=${term.cols}&rows=${term.rows}`;
+    // Fetch a short-lived WS auth token, then connect
+    fetch('/api/ws-token').then(r => r.json()).then(({ token }) => {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${window.location.host}/ws/terminal?session=${encodeURIComponent(session)}&host=${encodeURIComponent(host)}&cols=${term.cols}&rows=${term.rows}&token=${encodeURIComponent(token)}`;
 
-    ws = new WebSocket(wsUrl);
+      ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-      connected = true;
+      ws.onopen = () => {
+        connected = true;
+        connecting = false;
+        error = null;
+        lastCols = term.cols;
+        lastRows = term.rows;
+      };
+
+      ws.onmessage = (event) => {
+        suppressResize = true;
+        term.write(event.data);
+        clearTimeout(suppressTimer);
+        suppressTimer = setTimeout(() => { suppressResize = false; }, 200);
+      };
+
+      ws.onclose = (event) => {
+        connected = false;
+        connecting = false;
+        if (event.code !== 1000) {
+          error = 'Disconnected';
+          reconnectTimer = setTimeout(() => connect(), 2000);
+        }
+      };
+
+      ws.onerror = () => {
+        connected = false;
+        connecting = false;
+        error = 'Connection error';
+      };
+    }).catch(() => {
       connecting = false;
-      error = null;
-      // Record initial dimensions to avoid spurious resize on first output
-      lastCols = term.cols;
-      lastRows = term.rows;
-    };
-
-    ws.onmessage = (event) => {
-      // Suppress resize events while receiving output to break redraw loops
-      suppressResize = true;
-      term.write(event.data);
-      clearTimeout(suppressTimer);
-      suppressTimer = setTimeout(() => { suppressResize = false; }, 200);
-    };
-
-    ws.onclose = (event) => {
-      connected = false;
-      connecting = false;
-      if (event.code !== 1000) {
-        // Abnormal close — attempt reconnect after 2s
-        error = 'Disconnected';
-        reconnectTimer = setTimeout(() => connect(), 2000);
-      }
-    };
-
-    ws.onerror = () => {
-      connected = false;
-      connecting = false;
-      error = 'Connection error';
-    };
+      error = 'Auth failed';
+    });
   }
 
   function disconnect() {

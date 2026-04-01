@@ -2,6 +2,27 @@
 
 import { spawnTerminal, resizeTerminal, killTerminal } from '../services/terminal.js';
 import config from '../lib/config.js';
+import { randomBytes } from 'node:crypto';
+
+// Short-lived WS auth tokens — valid for 30 seconds
+const wsTokens = new Map();
+
+function generateWsToken(sessionId) {
+  const token = randomBytes(24).toString('hex');
+  wsTokens.set(token, { sessionId, created: Date.now() });
+  // Clean up expired tokens
+  for (const [t, v] of wsTokens) {
+    if (Date.now() - v.created > 30000) wsTokens.delete(t);
+  }
+  return token;
+}
+
+function validateWsToken(token) {
+  const entry = wsTokens.get(token);
+  if (!entry) return false;
+  wsTokens.delete(token); // One-time use
+  return Date.now() - entry.created < 30000;
+}
 
 // CIDR check (duplicated from auth.js to avoid circular imports)
 function isTrustedIp(ip) {
@@ -23,14 +44,21 @@ function isTrustedIp(ip) {
 }
 
 export default async function terminalWsRoutes(fastify) {
+  // Token endpoint — authenticated users get a short-lived WS token
+  fastify.get('/api/ws-token', async (req, reply) => {
+    // This endpoint goes through normal auth middleware (cookie-based)
+    const token = generateWsToken(req.session?.sessionId || 'anon');
+    return { token };
+  });
+
   fastify.get('/ws/terminal', { websocket: true }, (socket, req) => {
-    // Auth check for WebSocket connections
+    // Auth check: accept session cookie, trusted IP, OR valid WS token
     if (config.auth.method !== 'none') {
       const isAuthenticated = req.session?.authenticated;
       const isTrusted = isTrustedIp(req.ip);
-      fastify.log.info({ ip: req.ip, isAuthenticated, isTrusted, hasSession: !!req.session, method: config.auth.method }, 'WebSocket auth check');
-      if (!isAuthenticated && !isTrusted) {
-        fastify.log.warn({ ip: req.ip, isAuthenticated, isTrusted }, 'WebSocket auth rejected');
+      const tokenValid = req.query.token ? validateWsToken(req.query.token) : false;
+      if (!isAuthenticated && !isTrusted && !tokenValid) {
+        fastify.log.warn({ ip: req.ip, isAuthenticated, isTrusted, tokenValid }, 'WebSocket auth rejected');
         socket.close(1008, 'Authentication required');
         return;
       }
