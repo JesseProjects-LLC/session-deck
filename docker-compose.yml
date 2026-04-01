@@ -23,8 +23,19 @@ services:
     volumes:
       # Persist SQLite database across rebuilds
       - sessiondeck-data:/app/data
-      # SSH keys for connecting to tmux hosts (read-only)
-      - ./ssh:/root/.ssh:ro
+      # SSH keys for connecting to tmux hosts (copied to /root/.ssh at startup with correct perms)
+      - ./ssh:/ssh-mount:ro
+    extra_hosts:
+      # Tailscale IPs for tmux hosts
+      - "reliant:100.67.247.57"
+      - "hexapuma:100.98.73.28"
+      - "agamemnon:100.69.201.47"
+      - "manticore:100.106.252.80"
+      - "cardones:100.87.195.50"
+      - "minotaur:100.112.69.34"
+      - "prince-adrian:100.98.60.66"
+      - "trevors-star:100.109.51.23"
+      - "wayfarer:100.104.109.119"
     networks:
       - traefik-public
     labels:

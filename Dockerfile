@@ -33,9 +33,23 @@ COPY src/ ./src/
 # Create data directory for SQLite
 RUN mkdir -p /app/data
 
-# SSH config directory (mounted at runtime)
+# SSH config directory — copy at startup since mounted files have wrong ownership
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
+
+# Entrypoint that fixes SSH permissions then starts the app
+COPY <<'ENTRYPOINT' /app/entrypoint.sh
+#!/bin/sh
+if [ -d /ssh-mount ]; then
+  cp /ssh-mount/* /root/.ssh/ 2>/dev/null
+  chmod 700 /root/.ssh
+  chmod 600 /root/.ssh/config /root/.ssh/id_ed25519 2>/dev/null
+  chmod 644 /root/.ssh/id_ed25519.pub 2>/dev/null
+  chown -R root:root /root/.ssh
+fi
+exec node src/index.js
+ENTRYPOINT
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 7890
 ENV NODE_ENV=production
-CMD ["node", "src/index.js"]
+CMD ["/app/entrypoint.sh"]
