@@ -114,9 +114,16 @@ export function getActiveCount() {
 }
 
 function resolveHost(hostName) {
-  if (!hostName || hostName === 'reliant' || hostName === 'localhost') {
+  if (!hostName || hostName === 'localhost') {
     return { isLocal: true };
   }
+  // Check managed hosts DB via SSH config — don't hardcode any host as local
   const hosts = parseSSHConfig();
-  return hosts.find(h => h.name === hostName || h.aliases?.includes(hostName));
+  const found = hosts.find(h => h.name === hostName || h.aliases?.includes(hostName));
+  if (found) return found;
+  // If not in SSH config, check if it looks like this machine
+  if (hostName === 'reliant' && process.env.HOSTNAME?.includes('reliant')) {
+    return { isLocal: true };
+  }
+  return null;
 }
