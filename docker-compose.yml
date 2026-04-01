@@ -1,0 +1,43 @@
+services:
+  sessiondeck:
+    build: .
+    container_name: sessiondeck
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - SESSION_DECK_PORT=7890
+      - SESSION_DECK_HOST=0.0.0.0
+      - SESSION_DECK_LOG_LEVEL=info
+      - SESSION_DECK_DB_PATH=/app/data/session-deck.db
+      - SESSION_DECK_AUTH=${SESSION_DECK_AUTH:-oidc}
+      - SESSION_DECK_OIDC_ISSUER=${SESSION_DECK_OIDC_ISSUER}
+      - SESSION_DECK_OIDC_CLIENT_ID=${SESSION_DECK_OIDC_CLIENT_ID}
+      - SESSION_DECK_OIDC_CLIENT_SECRET=${SESSION_DECK_OIDC_CLIENT_SECRET}
+      - SESSION_DECK_OIDC_REDIRECT_URI=${SESSION_DECK_OIDC_REDIRECT_URI}
+      - SESSION_DECK_OIDC_SCOPES=${SESSION_DECK_OIDC_SCOPES:-openid profile email}
+      - SESSION_DECK_TRUSTED_NETWORKS=${SESSION_DECK_TRUSTED_NETWORKS:-}
+      - SESSION_DECK_SESSION_SECRET=${SESSION_DECK_SESSION_SECRET}
+      - SESSION_DECK_SESSION_MAX_AGE=${SESSION_DECK_SESSION_MAX_AGE:-86400}
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    volumes:
+      # Persist SQLite database across rebuilds
+      - sessiondeck-data:/app/data
+      # SSH keys for connecting to tmux hosts (read-only)
+      - ./ssh:/root/.ssh:ro
+    networks:
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      # deck.jesseprojects.com — public, HTTPS via Let's Encrypt
+      - traefik.http.routers.sessiondeck.rule=Host(`deck.jesseprojects.com`)
+      - traefik.http.routers.sessiondeck.entrypoints=websecure
+      - traefik.http.routers.sessiondeck.tls.certresolver=mytlschallenge
+      - traefik.http.services.sessiondeck.loadbalancer.server.port=7890
+
+volumes:
+  sessiondeck-data:
+
+networks:
+  traefik-public:
+    external: true

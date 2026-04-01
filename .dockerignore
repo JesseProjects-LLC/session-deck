@@ -1,0 +1,11 @@
+node_modules
+frontend/node_modules
+frontend/dist
+.gsd
+.git
+.env
+data
+docs
+*.md
+!README.md
+ssh/
