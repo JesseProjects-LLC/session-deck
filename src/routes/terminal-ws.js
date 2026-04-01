@@ -28,8 +28,9 @@ export default async function terminalWsRoutes(fastify) {
     if (config.auth.method !== 'none') {
       const isAuthenticated = req.session?.authenticated;
       const isTrusted = isTrustedIp(req.ip);
+      fastify.log.info({ ip: req.ip, isAuthenticated, isTrusted, hasSession: !!req.session, method: config.auth.method }, 'WebSocket auth check');
       if (!isAuthenticated && !isTrusted) {
-        fastify.log.warn({ ip: req.ip }, 'WebSocket auth rejected');
+        fastify.log.warn({ ip: req.ip, isAuthenticated, isTrusted }, 'WebSocket auth rejected');
         socket.close(1008, 'Authentication required');
         return;
       }

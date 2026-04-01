@@ -23,10 +23,13 @@ export async function registerAuth(fastify) {
   const session = await import('@fastify/session');
 
   await fastify.register(cookie.default);
+  // Detect if behind HTTPS proxy (from OIDC redirect URI or explicit env)
+  const isHttps = auth.oidcRedirectUri?.startsWith('https://') || process.env.SESSION_DECK_HTTPS === 'true';
+
   await fastify.register(session.default, {
     secret: auth.sessionSecret,
     cookie: {
-      secure: false, // set true if behind HTTPS proxy
+      secure: isHttps,
       httpOnly: true,
       sameSite: 'lax',
       maxAge: auth.sessionMaxAge * 1000,
