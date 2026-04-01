@@ -56,27 +56,32 @@ export async function listSessions(host, options = {}) {
     }
 
     const sessions = [];
-    for (const line of rawSessions.trim().split('\n')) {
+    const lines = rawSessions.trim().split('\n');
+    const parsed = lines.map(line => {
       const [name, windows, attached, created, activity] = line.split('|');
-      if (!name) continue;
+      return { name, windows, attached, created, activity };
+    }).filter(p => p.name);
 
-      const type = await detectType(host, name, timeout);
-      const context = await detectContext(host, name, timeout);
-
-      sessions.push({
-        name,
-        windows: parseInt(windows, 10),
-        attached: parseInt(attached, 10) > 0,
-        attachedCount: parseInt(attached, 10),
-        created: parseInt(created, 10) * 1000, // epoch ms
-        lastActivity: parseInt(activity, 10) * 1000, // epoch ms
+    // Run type + context detection in parallel for all sessions
+    const enriched = await Promise.all(parsed.map(async (p) => {
+      const [type, context] = await Promise.all([
+        detectType(host, p.name, timeout),
+        detectContext(host, p.name, timeout),
+      ]);
+      return {
+        name: p.name,
+        windows: parseInt(p.windows, 10),
+        attached: parseInt(p.attached, 10) > 0,
+        attachedCount: parseInt(p.attached, 10),
+        created: parseInt(p.created, 10) * 1000,
+        lastActivity: parseInt(p.activity, 10) * 1000,
         type,
         workingDir: context.workingDir,
         repoName: context.repoName,
-      });
-    }
+      };
+    }));
 
-    return result(host.name, 'online', sessions, start);
+    return result(host.name, 'online', enriched, start);
   } catch (err) {
     const status = classifyError(err);
     return result(host.name, status, [], start, err.message);
