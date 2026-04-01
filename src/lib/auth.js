@@ -51,6 +51,10 @@ export async function registerAuth(fastify) {
     // Skip auth for the auth routes themselves
     if (request.url.startsWith('/auth/')) return;
 
+    // Skip auth for PWA assets (needed before login for install prompt)
+    if (request.url === '/manifest.json' || request.url === '/sw.js' ||
+        request.url.startsWith('/icon') || request.url === '/favicon.png') return;
+
     // Skip auth for trusted networks
     if (isTrustedNetwork(request.ip)) return;
 
