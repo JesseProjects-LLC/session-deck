@@ -3,6 +3,10 @@ services:
     build: .
     container_name: sessiondeck
     restart: unless-stopped
+    ports:
+      # Expose for external Traefik (deck.hha.sh via hexapuma)
+      - "127.0.0.1:7890:7890"
+      - "100.104.109.119:7890:7890"
     environment:
       - NODE_ENV=production
       - SESSION_DECK_PORT=7890
