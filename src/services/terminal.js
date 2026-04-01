@@ -33,7 +33,7 @@ export function spawnTerminal(sessionName, hostName, options = {}) {
       '-o', 'ConnectTimeout=5',
       '-o', 'StrictHostKeyChecking=accept-new',
       '-o', 'SendEnv=LANG LC_ALL',
-      '-t', // Force PTY allocation
+      '-tt', // Force PTY allocation (double-t needed inside Docker containers)
     ];
     if (host.identityFile) {
       args.push('-i', host.identityFile.replace('~', process.env.HOME));
