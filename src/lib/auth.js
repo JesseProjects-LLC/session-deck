@@ -141,12 +141,20 @@ async function registerOIDC(fastify) {
     throw new Error(`OIDC discovery failed: ${err.message}`);
   }
 
+  // Derive redirect URI from the request origin so auth works from any domain
+  function buildRedirectUri(request) {
+    const proto = request.headers['x-forwarded-proto'] || request.protocol;
+    const host = request.headers['x-forwarded-host'] || request.hostname;
+    return `${proto}://${host}/auth/callback`;
+  }
+
   // Login — redirect to provider
   fastify.get('/auth/login', async (request, reply) => {
     if (request.session?.authenticated) {
       return reply.redirect('/');
     }
 
+    const redirectUri = buildRedirectUri(request);
     const state = oidc.randomState();
     const nonce = oidc.randomNonce();
     const codeVerifier = oidc.randomPKCECodeVerifier();
@@ -155,9 +163,10 @@ async function registerOIDC(fastify) {
     request.session.oidcState = state;
     request.session.oidcNonce = nonce;
     request.session.oidcCodeVerifier = codeVerifier;
+    request.session.oidcRedirectUri = redirectUri;
 
     const params = new URLSearchParams({
-      redirect_uri: auth.oidcRedirectUri,
+      redirect_uri: redirectUri,
       scope: auth.oidcScopes,
       state,
       nonce,
@@ -172,7 +181,10 @@ async function registerOIDC(fastify) {
   // Callback — handle provider response
   fastify.get('/auth/callback', async (request, reply) => {
     try {
-      const currentUrl = new URL(request.url, `${request.protocol}://${request.hostname}`);
+      // Use the redirect URI from the session (set during login) so the token
+      // exchange matches the exact URI sent to the provider
+      const redirectUri = request.session.oidcRedirectUri || buildRedirectUri(request);
+      const currentUrl = new URL(request.url, redirectUri.replace('/auth/callback', ''));
 
       const tokens = await oidc.authorizationCodeGrant(oidcConfig, currentUrl, {
         pkceCodeVerifier: request.session.oidcCodeVerifier,
@@ -204,6 +216,7 @@ async function registerOIDC(fastify) {
       delete request.session.oidcState;
       delete request.session.oidcNonce;
       delete request.session.oidcCodeVerifier;
+      delete request.session.oidcRedirectUri;
 
       const returnTo = request.session.returnTo || '/';
       delete request.session.returnTo;
@@ -216,13 +229,14 @@ async function registerOIDC(fastify) {
 
   // Logout
   fastify.get('/auth/logout', async (request, reply) => {
+    const loginUri = buildRedirectUri(request).replace('/auth/callback', '/auth/login');
     request.session.destroy();
 
     // If the provider supports end_session_endpoint, redirect there
     const serverMeta = oidcConfig.serverMetadata();
     if (serverMeta.end_session_endpoint) {
       const logoutUrl = oidc.buildEndSessionUrl(oidcConfig, {
-        post_logout_redirect_uri: auth.oidcRedirectUri.replace('/auth/callback', '/auth/login'),
+        post_logout_redirect_uri: loginUri,
       });
       return reply.redirect(logoutUrl.href);
     }
