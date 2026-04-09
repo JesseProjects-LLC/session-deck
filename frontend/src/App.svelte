@@ -1117,6 +1117,22 @@
     return `${pm.host}:${pm.session}`;
   }
 
+  async function handleExportScrollback(session, host) {
+    try {
+      toast('Capturing scrollback...', 'info');
+      const url = `/api/sessions/${encodeURIComponent(host)}/${encodeURIComponent(session)}/capture?download=true`;
+      // Trigger browser download via hidden link
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      toast(`Export failed: ${e.message}`, 'error');
+    }
+  }
+
   // Keyboard shortcuts
   function handleKeydown(e) {
     // Don't handle when typing in inputs or modals are open
@@ -1901,6 +1917,8 @@
       <div class="ctx-sep"></div>
       <button class="ctx-item" onclick={() => { handleZoom(nodeIdFromPane(paneMenu), paneMenu.session, paneMenu.host); paneMenu = null; }}>{zoomedPane ? 'Restore' : 'Zoom'}</button>
       <button class="ctx-item danger" onclick={() => { handleClosePane(paneMenu.path); paneMenu = null; }}>Close Pane</button>
+      <div class="ctx-sep"></div>
+      <button class="ctx-item" onclick={() => { handleExportScrollback(paneMenu.session, paneMenu.host); paneMenu = null; }}>Export Scrollback</button>
       <div class="ctx-sep"></div>
       <button class="ctx-item danger" onclick={() => { openDeleteSessionModal(paneMenu.session, paneMenu.host); paneMenu = null; }}>Kill Session</button>
     </div>

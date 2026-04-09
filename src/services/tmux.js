@@ -391,3 +391,73 @@ export async function deleteSession(host, name) {
     throw Object.assign(new Error(`Failed to delete session on ${host.name}: ${cleanError(err)}`), { statusCode: 500 });
   }
 }
+
+/**
+ * Capture the full scrollback of all panes in a tmux session.
+ * Returns a single string with pane separators.
+ * @param {object} host
+ * @param {string} sessionName
+ * @returns {Promise<string>}
+ */
+export async function captureSession(host, sessionName) {
+  const timeout = 10000;
+  try {
+    // List all window.pane indices in the session
+    let paneList;
+    if (host.isLocal) {
+      paneList = await execLocal(
+        ['list-panes', '-t', sessionName, '-a', '-F', '#{session_name}:#{window_index}.#{pane_index}'],
+        timeout
+      );
+    } else {
+      paneList = await execRemote(
+        host,
+        `tmux list-panes -t '${sessionName}' -a -F '#{session_name}:#{window_index}.#{pane_index}'`,
+        timeout
+      );
+    }
+
+    // Filter to only panes belonging to this session (the -a flag lists all)
+    const panes = paneList.trim().split('\n').filter(p => p.startsWith(sessionName + ':'));
+    if (!panes.length) {
+      throw Object.assign(new Error(`No panes found in session "${sessionName}" on ${host.name}`), { statusCode: 404 });
+    }
+
+    const chunks = [];
+    for (const paneTarget of panes) {
+      if (chunks.length > 0) {
+        chunks.push(`\n${'='.repeat(60)}\n=== Pane: ${paneTarget}\n${'='.repeat(60)}\n`);
+      } else {
+        chunks.push(`=== Pane: ${paneTarget}\n${'='.repeat(60)}\n`);
+      }
+
+      try {
+        let output;
+        if (host.isLocal) {
+          output = await execLocal(['capture-pane', '-t', paneTarget, '-p', '-S', '-'], timeout);
+        } else {
+          output = await execRemote(
+            host,
+            `tmux capture-pane -t '${paneTarget}' -p -S -`,
+            timeout
+          );
+        }
+        chunks.push(output);
+      } catch (paneErr) {
+        chunks.push(`[Error capturing pane: ${paneErr.message}]\n`);
+      }
+    }
+
+    return chunks.join('');
+  } catch (err) {
+    if (err.statusCode) throw err;
+    const kind = classifyError(err);
+    if (kind === 'unreachable') {
+      throw Object.assign(new Error(`Host ${host.name} is unreachable`), { statusCode: 503 });
+    }
+    if (kind === 'no-tmux') {
+      throw Object.assign(new Error(`tmux not running on ${host.name}`), { statusCode: 503 });
+    }
+    throw Object.assign(new Error(`Failed to capture session on ${host.name}: ${cleanError(err)}`), { statusCode: 500 });
+  }
+}

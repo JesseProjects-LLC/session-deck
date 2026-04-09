@@ -1,7 +1,7 @@
 // src/routes/sessions.js — tmux sessions API
 
 import { parseSSHConfig } from '../services/ssh-config.js';
-import { listAllSessions, listSessions, createSession, renameSession, deleteSession } from '../services/tmux.js';
+import { listAllSessions, listSessions, createSession, renameSession, deleteSession, captureSession } from '../services/tmux.js';
 import { isValidSessionName } from '../lib/validate.js';
 
 function findHost(hostName) {
@@ -157,6 +157,32 @@ export default async function sessionsRoutes(fastify) {
       return { success: true, host: hostName, session: sessionName, lines: lines.length };
     } catch (err) {
       return reply.code(500).send({ error: `Failed to send render test: ${err.message}` });
+    }
+  });
+
+  // Capture full scrollback of a session (all panes)
+  fastify.get('/api/sessions/:hostName/:sessionName/capture', async (request, reply) => {
+    const { hostName, sessionName } = request.params;
+    const download = request.query.download === 'true';
+    const host = findHost(hostName);
+    if (!host) return reply.code(404).send({ error: `Host not found: ${hostName}` });
+
+    try {
+      const text = await captureSession(host, sessionName);
+
+      if (download) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        const filename = `${sessionName}-${hostName}-${timestamp}.txt`;
+        reply
+          .header('Content-Type', 'text/plain; charset=utf-8')
+          .header('Content-Disposition', `attachment; filename="${filename}"`)
+          .send(text);
+        return;
+      }
+
+      return { host: hostName, session: sessionName, text };
+    } catch (err) {
+      return reply.code(err.statusCode || 500).send({ error: err.message });
     }
   });
 }
