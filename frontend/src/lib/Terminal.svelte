@@ -5,6 +5,7 @@
   import { WebLinksAddon } from '@xterm/addon-web-links';
   import { ClipboardAddon } from '@xterm/addon-clipboard';
   import { Unicode11Addon } from '@xterm/addon-unicode11';
+  import { subscribeStatus } from './stores/status.js';
 
   let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
 
@@ -24,6 +25,16 @@
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
+  let paneStatus = $state(null); // { status, prevStatus, confidence }
+  let unsubStatus;
+
+  // Status badge config
+  const STATUS_CONFIG = {
+    asking:  { label: 'ASKING',  color: '#ffb454', bg: 'rgba(255,180,84,0.12)' },
+    error:   { label: 'ERROR',   color: '#f07178', bg: 'rgba(240,113,120,0.12)' },
+    done:    { label: 'DONE',    color: '#7fd962', bg: 'rgba(127,217,98,0.12)' },
+    working: { label: 'WORKING', color: '#3d8bfd', bg: 'rgba(61,139,253,0.12)' },
+  };
 
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
@@ -196,6 +207,12 @@
     // Connect
     connect();
 
+    // Subscribe to pane status
+    unsubStatus = subscribeStatus((statusMap) => {
+      const key = `${host}:${session}`;
+      paneStatus = statusMap[key] || null;
+    });
+
     return () => {
       resizeObserver.disconnect();
     };
@@ -206,6 +223,7 @@
     if (term) {
       term.dispose();
     }
+    if (unsubStatus) unsubStatus();
   });
 
   // Reconnect when session or host changes without remounting
@@ -255,6 +273,10 @@
       <span class="conn-badge connected">LIVE</span>
     {:else if error}
       <span class="conn-badge error">{error}</span>
+    {/if}
+    {#if paneStatus && STATUS_CONFIG[paneStatus.status]}
+      {@const cfg = STATUS_CONFIG[paneStatus.status]}
+      <span class="status-badge" class:pulse={paneStatus.status === 'asking'} style="background:{cfg.bg};color:{cfg.color}">{cfg.label}</span>
     {/if}
     <span class="tbadge" style="background:{sessionTypeColor}20;color:{sessionTypeColor}">{sessionTypeLabel}</span>
     <div class="pane-actions">
@@ -326,6 +348,18 @@
   .conn-badge.connected { background: rgba(127,217,98,0.1); color: #7fd962; }
   .conn-badge.connecting { background: rgba(255,180,84,0.1); color: #ffb454; }
   .conn-badge.error { background: rgba(240,113,120,0.1); color: #f07178; }
+
+  .status-badge {
+    font-size: 9px; padding: 1px 6px; border-radius: 3px; font-weight: 600;
+    letter-spacing: 0.3px; transition: all 0.2s;
+  }
+  .status-badge.pulse {
+    animation: status-pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
 
   .tbadge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 500; }
 

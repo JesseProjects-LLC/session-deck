@@ -10,6 +10,7 @@
     renameSessionInWorkspaces, updatePaneTitle,
   } from './lib/stores/workspaces.js';
   import { subscribeActivity, startActivityPolling, stopActivityPolling, markWorkspaceSeen } from './lib/stores/activity.js';
+  import { subscribeStatus, startStatusConnection, stopStatusConnection, setViewingPanes, getWorstStatus, requestNotificationPermission } from './lib/stores/status.js';
 
   let sessions = $state([]);
   let workspaces = $state([]);
@@ -21,6 +22,7 @@
   let showPropsPanel = $state(false);
   let zoomedPane = $state(null); // { id, session, host } when a pane is zoomed
   let activitySet = $state(new Set()); // workspace IDs with unseen output
+  let statusMap = $state({}); // "host:session" → { status, ... } from status WebSocket
 
   // Mobile/responsive state
   let isMobile = $state(false);
@@ -148,6 +150,20 @@
 
   function typeColor(type) {
     return sessionTypeMap[type]?.color || '#6b7688';
+  }
+
+  // Status colors for workspace tabs — matches Terminal.svelte STATUS_CONFIG
+  const WS_STATUS_COLORS = {
+    asking:  { dot: '#ffb454', shadow: 'rgba(255,180,84,0.6)' },
+    error:   { dot: '#f07178', shadow: 'rgba(240,113,120,0.6)' },
+    done:    { dot: '#7fd962', shadow: 'rgba(127,217,98,0.6)' },
+    working: { dot: '#3d8bfd', shadow: 'rgba(61,139,253,0.4)' },
+  };
+
+  function getWorkspaceStatus(ws) {
+    if (!ws) return null;
+    const panes = getSessionPanes(ws.layout);
+    return getWorstStatus(panes);
   }
 
   function getTypeInfo(sessionName) {
@@ -391,6 +407,9 @@
     setActive(id);
     markWorkspaceSeen(id);
     updateUrlHash(id, null);
+    // Tell status store which panes the user can see (suppress notifications for these)
+    const ws = workspaces.find(w => w.id === id);
+    if (ws) setViewingPanes(getSessionPanes(ws.layout));
   }
 
   function handleFocus(id) {
@@ -1220,6 +1239,16 @@
     const unsubActivity = subscribeActivity(set => { activitySet = set; });
     startActivityPolling();
 
+    // Connect to status WebSocket for real-time pane status
+    startStatusConnection();
+    const unsubStatus = subscribeStatus(map => { statusMap = map; });
+    // Request notification permission on first interaction
+    const requestNotifOnce = () => {
+      requestNotificationPermission();
+      window.removeEventListener('click', requestNotifOnce);
+    };
+    window.addEventListener('click', requestNotifOnce);
+
     // Viewport detection for responsive layout
     function checkViewport() {
       isMobile = window.innerWidth < 768;
@@ -1230,8 +1259,11 @@
 
     return () => {
       unsubActivity();
+      unsubStatus();
       stopActivityPolling();
+      stopStatusConnection();
       window.removeEventListener('resize', checkViewport);
+      window.removeEventListener('click', requestNotifOnce);
     };
   });
 
@@ -1281,15 +1313,19 @@
     <span class="sep"></span>
     <div class="ws-tabs">
       {#each workspaces as ws, i}
+        {@const wsStatus = getWorkspaceStatus(ws)}
+        {@const statusColor = wsStatus && WS_STATUS_COLORS[wsStatus]}
         <button
           class="wt"
           class:active={ws.id === activeId}
-          class:has-activity={activitySet.has(ws.id)}
+          class:has-activity={activitySet.has(ws.id) || (wsStatus && wsStatus !== 'idle')}
           onclick={() => switchWorkspace(ws.id)}
           oncontextmenu={(e) => openContextMenu(e, ws.id)}
-          title="{ws.description || ws.name} (Alt+{i + 1})"
+          title="{ws.description || ws.name} (Alt+{i + 1}){wsStatus ? ' [' + wsStatus + ']' : ''}"
         >
-          {#if activitySet.has(ws.id)}
+          {#if statusColor && ws.id !== activeId}
+            <span class="activity-dot" style="background:{statusColor.dot};box-shadow:0 0 6px {statusColor.shadow}" class:asking-pulse={wsStatus === 'asking'}></span>
+          {:else if activitySet.has(ws.id)}
             <span class="activity-dot"></span>
           {/if}
           {ws.name}
@@ -2432,9 +2468,16 @@
     flex-shrink: 0;
     animation: activity-pulse 2s ease-in-out infinite;
   }
+  .activity-dot.asking-pulse {
+    animation: asking-flash 1s ease-in-out infinite;
+  }
   @keyframes activity-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
+  }
+  @keyframes asking-flash {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.7); }
   }
   .add-btn { font-size: 16px; padding: 3px 10px; color: var(--text-muted); }
   .add-btn:hover { color: var(--accent); }
