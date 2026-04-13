@@ -1,6 +1,7 @@
 // src/routes/terminal-ws.js — WebSocket route for terminal I/O
 
 import { spawnTerminal, resizeTerminal, killTerminal } from '../services/terminal.js';
+import statusEngine from '../services/status-engine.js';
 import config from '../lib/config.js';
 import { randomBytes } from 'node:crypto';
 
@@ -91,7 +92,10 @@ export default async function terminalWsRoutes(fastify) {
 
     fastify.log.info({ id, session, host }, 'Terminal PTY spawned');
 
-    // PTY output → WebSocket
+    // Register PTY with status engine for activity classification
+    statusEngine.register(id, host, session);
+
+    // PTY output → WebSocket + status engine
     term.onData((data) => {
       try {
         if (socket.readyState === 1) { // OPEN
@@ -100,11 +104,14 @@ export default async function terminalWsRoutes(fastify) {
       } catch {
         // Socket may have closed
       }
+      // Feed output to status engine (fire-and-forget, non-blocking)
+      statusEngine.feed(id, data);
     });
 
-    // PTY exit → close WebSocket
+    // PTY exit → close WebSocket + remove from status engine
     term.onExit(({ exitCode, signal }) => {
       fastify.log.info({ id, session, exitCode, signal }, 'Terminal PTY exited');
+      statusEngine.remove(id);
       try {
         socket.close(1000, 'PTY exited');
       } catch {
@@ -138,14 +145,16 @@ export default async function terminalWsRoutes(fastify) {
       }
     });
 
-    // WebSocket close → kill PTY
+    // WebSocket close → kill PTY + remove from status engine
     socket.on('close', () => {
       fastify.log.info({ id, session }, 'Terminal WebSocket closed');
+      statusEngine.remove(id);
       killTerminal(id);
     });
 
     socket.on('error', (err) => {
       fastify.log.error({ id, session, err: err.message }, 'Terminal WebSocket error');
+      statusEngine.remove(id);
       killTerminal(id);
     });
   });

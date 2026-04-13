@@ -20,6 +20,8 @@ import workspaceRoutes from './routes/workspaces.js';
 import settingsRoutes from './routes/settings.js';
 import activityRoutes from './routes/activity.js';
 import templateRoutes from './routes/templates.js';
+import statusRoutes from './routes/status.js';
+import statusWsRoutes from './routes/status-ws.js';
 
 export async function buildServer() {
   const fastify = Fastify({
@@ -105,6 +107,8 @@ export async function buildServer() {
   await fastify.register(settingsRoutes);
   await fastify.register(activityRoutes);
   await fastify.register(templateRoutes);
+  await fastify.register(statusRoutes);
+  await fastify.register(statusWsRoutes);
 
   // Load dynamic session type map after DB is ready
   const { loadTypeMap } = await import('./services/tmux.js');
