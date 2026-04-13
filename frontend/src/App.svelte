@@ -28,6 +28,7 @@
   let isMobile = $state(false);
   let isTablet = $state(false);
   let mobileActivePane = $state(0); // index of active pane in mobile single-pane view
+  let mobileMinimap = $state(true); // true = minimap grid, false = single terminal
   let readOnlyMode = $state(false);
 
   // Workspace management modals
@@ -152,19 +153,36 @@
     return sessionTypeMap[type]?.color || '#6b7688';
   }
 
-  // Status colors for workspace tabs — matches Terminal.svelte STATUS_CONFIG
-  const WS_STATUS_COLORS = {
-    asking:  { dot: '#ffb454', shadow: 'rgba(255,180,84,0.6)' },
-    error:   { dot: '#f07178', shadow: 'rgba(240,113,120,0.6)' },
-    done:    { dot: '#7fd962', shadow: 'rgba(127,217,98,0.6)' },
-    working: { dot: '#3d8bfd', shadow: 'rgba(61,139,253,0.4)' },
+  // Status colors — shared by workspace tabs, pane headers, and minimap cards
+  const STATUS_COLORS = {
+    asking:  { bg: 'rgba(255,180,84,0.15)', border: '#ffb454', dot: '#ffb454', shadow: 'rgba(255,180,84,0.6)', label: 'ASKING' },
+    error:   { bg: 'rgba(240,113,120,0.15)', border: '#f07178', dot: '#f07178', shadow: 'rgba(240,113,120,0.6)', label: 'ERROR' },
+    done:    { bg: 'rgba(127,217,98,0.15)', border: '#7fd962', dot: '#7fd962', shadow: 'rgba(127,217,98,0.6)', label: 'DONE' },
+    working: { bg: 'rgba(61,139,253,0.15)', border: '#3d8bfd', dot: '#3d8bfd', shadow: 'rgba(61,139,253,0.4)', label: 'WORKING' },
+    idle:    { bg: 'rgba(107,118,136,0.1)', border: '#6b7688', dot: '#6b7688', shadow: 'none', label: 'IDLE' },
   };
+  // Alias for backward compat in workspace tab rendering
+  const WS_STATUS_COLORS = STATUS_COLORS;
 
   function getWorkspaceStatus(ws) {
     if (!ws) return null;
     const panes = getSessionPanes(ws.layout);
     // Pass statusMap so Svelte tracks the reactive dependency
     return getWorstStatus(panes, statusMap);
+  }
+
+  function getPaneStatusFromMap(host, session) {
+    const key = `${host || 'reliant'}:${session}`;
+    return statusMap[key]?.status || null;
+  }
+
+  function openMinimapPane(paneIndex) {
+    mobileActivePane = paneIndex;
+    mobileMinimap = false;
+  }
+
+  function backToMinimap() {
+    mobileMinimap = true;
   }
 
   function getTypeInfo(sessionName) {
@@ -405,6 +423,7 @@
     showSessionPicker = null;
     contextMenu = null;
     mobileActivePane = 0;
+    mobileMinimap = true;
     setActive(id);
     markWorkspaceSeen(id);
     updateUrlHash(id, null);
@@ -1373,37 +1392,88 @@
           />
         </div>
       {:else if isMobile && activeLayout && activeId}
-        <!-- Mobile: single pane with bottom tab switcher -->
         {@const panes = getSessionPanes(activeLayout)}
-        {#if panes.length > 0}
-          {#key `${activeId}-${mobileActivePane}`}
-            <div class="mobile-pane">
-              <Terminal
-                session={panes[mobileActivePane % panes.length].session}
-                host={panes[mobileActivePane % panes.length].host}
-                focused={true}
-                sessionTypeColor={getTypeInfo(panes[mobileActivePane % panes.length].session).color}
-                sessionTypeLabel={getTypeInfo(panes[mobileActivePane % panes.length].session).label}
-                sessionContext={getTypeInfo(panes[mobileActivePane % panes.length].session).context}
-                onSessionClick={() => openSessionPicker([], panes[mobileActivePane % panes.length].session)}
-                onContextMenu={(e) => handlePaneContextMenu(e, [], panes[mobileActivePane % panes.length].session, panes[mobileActivePane % panes.length].host)}
-              />
-            </div>
-          {/key}
-          <div class="mobile-pane-tabs">
-            {#each panes as pane, i}
-              <button
-                class="mobile-pane-tab"
-                class:active={mobileActivePane === i}
-                onclick={() => mobileActivePane = i}
-              >
-                <span class="mobile-tab-dot" style="background:{getTypeInfo(pane.session).color}"></span>
-                <span class="mobile-tab-name">{pane.session}</span>
-              </button>
-            {/each}
+        {#if panes.length === 0}
+          <div class="center-msg">No panes</div>
+        {:else if mobileMinimap}
+          <!-- Mobile minimap: grid of status cards mirroring layout proportions -->
+          <div class="minimap-container">
+            {#snippet minimapNode(node, paneCounter)}
+              {#if node.session}
+                {@const idx = paneCounter.i++}
+                {@const status = getPaneStatusFromMap(node.host, node.session)}
+                {@const sc = STATUS_COLORS[status] || STATUS_COLORS.idle}
+                {@const info = getTypeInfo(node.session)}
+                <button
+                  class="minimap-card"
+                  class:asking={status === 'asking'}
+                  style="flex:{node.size || 1};border-color:{sc.border};background:{sc.bg}"
+                  onclick={() => openMinimapPane(idx)}
+                >
+                  <span class="minimap-session">{node.session}</span>
+                  <span class="minimap-host">{node.host || 'reliant'}</span>
+                  <span class="minimap-meta">
+                    <span class="minimap-type" style="color:{info.color}">{info.label}</span>
+                    {#if status && status !== 'idle' && status !== 'unknown'}
+                      <span class="minimap-status" style="color:{sc.border}">{sc.label}</span>
+                    {/if}
+                  </span>
+                </button>
+              {:else if node.children}
+                <div class="minimap-split" class:minimap-h={node.split === 'h'} class:minimap-v={node.split === 'v'} style="flex:{node.size || 1}">
+                  {#each node.children as child}
+                    {@render minimapNode(child, paneCounter)}
+                  {/each}
+                </div>
+              {/if}
+            {/snippet}
+            {@render minimapNode(activeLayout, { i: 0 })}
           </div>
         {:else}
-          <div class="center-msg">No panes</div>
+          <!-- Mobile terminal: single pane with back button -->
+          {#key `${activeId}-${mobileActivePane}`}
+            {@const pane = panes[mobileActivePane % panes.length]}
+            {@const status = getPaneStatusFromMap(pane.host, pane.session)}
+            {@const sc = STATUS_COLORS[status] || STATUS_COLORS.idle}
+            <div class="mobile-terminal">
+              <div class="mobile-terminal-header">
+                <button class="mobile-back-btn" onclick={backToMinimap} title="Back to minimap">
+                  <span class="mobile-back-arrow">&#8592;</span> Minimap
+                </button>
+                <span class="mobile-terminal-info">
+                  <span class="mobile-terminal-name">{pane.session}</span>
+                  {#if status && status !== 'idle' && status !== 'unknown'}
+                    <span class="mobile-terminal-status" style="color:{sc.border}">{sc.label}</span>
+                  {/if}
+                </span>
+                <div class="mobile-pane-switcher">
+                  {#each panes as p, i}
+                    {@const pSt = getPaneStatusFromMap(p.host, p.session)}
+                    {@const pSc = STATUS_COLORS[pSt] || STATUS_COLORS.idle}
+                    <button
+                      class="mobile-pane-pip"
+                      class:active={mobileActivePane === i}
+                      style="background:{mobileActivePane === i ? pSc.border : pSc.dot}"
+                      title={p.session}
+                      onclick={() => mobileActivePane = i}
+                    ></button>
+                  {/each}
+                </div>
+              </div>
+              <div class="mobile-pane">
+                <Terminal
+                  session={pane.session}
+                  host={pane.host}
+                  focused={true}
+                  sessionTypeColor={getTypeInfo(pane.session).color}
+                  sessionTypeLabel={getTypeInfo(pane.session).label}
+                  sessionContext={getTypeInfo(pane.session).context}
+                  onSessionClick={() => openSessionPicker([], pane.session)}
+                  onContextMenu={(e) => handlePaneContextMenu(e, [], pane.session, pane.host)}
+                />
+              </div>
+            </div>
+          {/key}
         {/if}
       {:else if activeLayout && activeId}
         {#key activeId}
@@ -3348,32 +3418,99 @@
   .palette-empty {
     padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;
   }
-  /* ---- Mobile single-pane view ---- */
+  /* ---- Mobile minimap ---- */
+  .minimap-container {
+    flex: 1; display: flex; flex-direction: column;
+    padding: 6px; gap: 4px; overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .minimap-split {
+    display: flex; gap: 4px; min-height: 0; min-width: 0;
+  }
+  .minimap-h { flex-direction: row; }
+  .minimap-v { flex-direction: column; }
+  .minimap-card {
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    gap: 3px; padding: 10px 6px; border-radius: 8px;
+    border: 2px solid var(--border); background: var(--bg-raised);
+    cursor: pointer; transition: all 0.15s; min-height: 64px; min-width: 0;
+    overflow: hidden; -webkit-tap-highlight-color: transparent;
+  }
+  .minimap-card:active {
+    transform: scale(0.96); filter: brightness(1.15);
+  }
+  .minimap-card.asking {
+    animation: minimap-pulse 2s ease-in-out infinite;
+  }
+  @keyframes minimap-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  .minimap-session {
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 100%;
+  }
+  .minimap-host {
+    font-size: 9px; color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .minimap-meta {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center;
+  }
+  .minimap-type {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .minimap-status {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ---- Mobile terminal view ---- */
+  .mobile-terminal {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .mobile-terminal-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px; background: var(--bg-raised);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .mobile-back-btn {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg-base); color: var(--text-secondary); font-size: 11px;
+    font-family: 'DM Sans', sans-serif; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-back-btn:active { background: var(--bg-elevated); }
+  .mobile-back-arrow { font-size: 14px; }
+  .mobile-terminal-info {
+    flex: 1; display: flex; align-items: center; gap: 6px;
+    overflow: hidden;
+  }
+  .mobile-terminal-name {
+    font-size: 12px; font-weight: 600; color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .mobile-terminal-status {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .mobile-pane-switcher {
+    display: flex; gap: 4px; align-items: center; flex-shrink: 0;
+  }
+  .mobile-pane-pip {
+    width: 8px; height: 8px; border-radius: 50%; border: none;
+    cursor: pointer; opacity: 0.5; transition: all 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-pane-pip.active { opacity: 1; transform: scale(1.3); }
   .mobile-pane {
     flex: 1; overflow: hidden; display: flex; flex-direction: column;
   }
-  .mobile-pane-tabs {
-    display: flex; gap: 2px; padding: 4px 8px;
-    background: var(--bg-raised); border-top: 1px solid var(--border);
-    overflow-x: auto; flex-shrink: 0;
-    -webkit-overflow-scrolling: touch;
-  }
-  .mobile-pane-tab {
-    display: flex; align-items: center; gap: 4px;
-    padding: 6px 10px; border-radius: 4px; border: 1px solid transparent;
-    background: transparent; color: var(--text-secondary); font-size: 11px;
-    font-family: 'JetBrains Mono', monospace; cursor: pointer;
-    white-space: nowrap; flex-shrink: 0; transition: all 0.12s;
-  }
-  .mobile-pane-tab:hover { color: var(--text-primary); }
-  .mobile-pane-tab.active {
-    color: var(--accent); background: var(--accent-bg);
-    border-color: var(--accent-border);
-  }
-  .mobile-tab-dot {
-    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  }
-  .mobile-tab-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---- Responsive breakpoints ---- */
   @media (max-width: 767px) {
