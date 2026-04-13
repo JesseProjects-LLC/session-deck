@@ -163,7 +163,8 @@
   function getWorkspaceStatus(ws) {
     if (!ws) return null;
     const panes = getSessionPanes(ws.layout);
-    return getWorstStatus(panes);
+    // Pass statusMap so Svelte tracks the reactive dependency
+    return getWorstStatus(panes, statusMap);
   }
 
   function getTypeInfo(sessionName) {

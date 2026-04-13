@@ -176,14 +176,15 @@ function fireNotification(session, host) {
  * @param {Array<{host: string, session: string}>} panes
  * @returns {string|null} The most urgent status, or null if no panes are tracked
  */
-export function getWorstStatus(panes) {
+export function getWorstStatus(panes, statusSnapshot) {
   const priority = { asking: 5, error: 4, done: 3, working: 2, idle: 1, unknown: 0 };
+  const source = statusSnapshot || _paneStatus;
   let worst = null;
   let worstPriority = -1;
 
   for (const { host, session } of panes) {
     const key = `${host || 'reliant'}:${session}`;
-    const entry = _paneStatus[key];
+    const entry = source[key];
     if (!entry) continue;
     const p = priority[entry.status] ?? 0;
     if (p > worstPriority) {
