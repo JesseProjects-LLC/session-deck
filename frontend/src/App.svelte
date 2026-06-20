@@ -1396,38 +1396,31 @@
         {#if panes.length === 0}
           <div class="center-msg">No panes</div>
         {:else if mobileMinimap}
-          <!-- Mobile minimap: grid of status cards mirroring layout proportions -->
+          <!-- Mobile minimap: compact list view for portrait, efficient use of space -->
           <div class="minimap-container">
-            {#snippet minimapNode(node, paneCounter)}
-              {#if node.session}
-                {@const idx = paneCounter.i++}
-                {@const status = getPaneStatusFromMap(node.host, node.session)}
-                {@const sc = STATUS_COLORS[status] || STATUS_COLORS.idle}
-                {@const info = getTypeInfo(node.session)}
-                <button
-                  class="minimap-card"
-                  class:asking={status === 'asking'}
-                  style="flex:{node.size || 1};border-color:{sc.border};background:{sc.bg}"
-                  onclick={() => openMinimapPane(idx)}
-                >
-                  <span class="minimap-session">{node.session}</span>
-                  <span class="minimap-host">{node.host || 'reliant'}</span>
-                  <span class="minimap-meta">
-                    <span class="minimap-type" style="color:{info.color}">{info.label}</span>
-                    {#if status && status !== 'idle' && status !== 'unknown'}
-                      <span class="minimap-status" style="color:{sc.border}">{sc.label}</span>
-                    {/if}
-                  </span>
-                </button>
-              {:else if node.children}
-                <div class="minimap-split" class:minimap-h={node.split === 'h'} class:minimap-v={node.split === 'v'} style="flex:{node.size || 1}">
-                  {#each node.children as child}
-                    {@render minimapNode(child, paneCounter)}
-                  {/each}
-                </div>
-              {/if}
-            {/snippet}
-            {@render minimapNode(activeLayout, { i: 0 })}
+            {#each panes as pane, idx}
+              {@const status = getPaneStatusFromMap(pane.host, pane.session)}
+              {@const sc = STATUS_COLORS[status] || STATUS_COLORS.idle}
+              {@const info = getTypeInfo(pane.session)}
+              <button
+                class="minimap-row"
+                class:asking={status === 'asking'}
+                style="border-left-color:{sc.border}"
+                onclick={() => openMinimapPane(idx)}
+              >
+                <span class="minimap-row-left">
+                  <span class="minimap-row-dot" style="background:{sc.border}"></span>
+                  <span class="minimap-row-session">{pane.session}</span>
+                  <span class="minimap-row-host">{pane.host || 'reliant'}</span>
+                </span>
+                <span class="minimap-row-right">
+                  {#if status && status !== 'idle' && status !== 'unknown'}
+                    <span class="minimap-row-status" style="background:{sc.bg};color:{sc.border}">{sc.label}</span>
+                  {/if}
+                  <span class="minimap-row-type" style="color:{info.color}">{info.label}</span>
+                </span>
+              </button>
+            {/each}
           </div>
         {:else}
           <!-- Mobile terminal: single pane with back button -->
@@ -1465,6 +1458,7 @@
                   session={pane.session}
                   host={pane.host}
                   focused={true}
+                  isMobile={true}
                   sessionTypeColor={getTypeInfo(pane.session).color}
                   sessionTypeLabel={getTypeInfo(pane.session).label}
                   sessionContext={getTypeInfo(pane.session).context}
@@ -3421,51 +3415,50 @@
   /* ---- Mobile minimap ---- */
   .minimap-container {
     flex: 1; display: flex; flex-direction: column;
-    padding: 6px; gap: 4px; overflow: auto;
+    padding: 4px 6px; gap: 2px; overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
-  .minimap-split {
-    display: flex; gap: 4px; min-height: 0; min-width: 0;
+  .minimap-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 10px 10px 12px; border-radius: 6px;
+    border: none; border-left: 3px solid var(--border);
+    background: var(--bg-raised); cursor: pointer;
+    transition: all 0.12s; -webkit-tap-highlight-color: transparent;
+    font-family: 'JetBrains Mono', monospace;
   }
-  .minimap-h { flex-direction: row; }
-  .minimap-v { flex-direction: column; }
-  .minimap-card {
-    display: flex; flex-direction: column; justify-content: center; align-items: center;
-    gap: 3px; padding: 10px 6px; border-radius: 8px;
-    border: 2px solid var(--border); background: var(--bg-raised);
-    cursor: pointer; transition: all 0.15s; min-height: 64px; min-width: 0;
-    overflow: hidden; -webkit-tap-highlight-color: transparent;
+  .minimap-row:active {
+    filter: brightness(1.2); transform: scale(0.98);
   }
-  .minimap-card:active {
-    transform: scale(0.96); filter: brightness(1.15);
-  }
-  .minimap-card.asking {
+  .minimap-row.asking {
     animation: minimap-pulse 2s ease-in-out infinite;
   }
   @keyframes minimap-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
   }
-  .minimap-session {
+  .minimap-row-left {
+    display: flex; align-items: center; gap: 8px;
+    overflow: hidden; min-width: 0;
+  }
+  .minimap-row-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .minimap-row-session {
     font-size: 13px; font-weight: 600; color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    max-width: 100%;
   }
-  .minimap-host {
-    font-size: 9px; color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
+  .minimap-row-host {
+    font-size: 10px; color: var(--text-muted); flex-shrink: 0;
   }
-  .minimap-meta {
-    display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center;
+  .minimap-row-right {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
   }
-  .minimap-type {
-    font-size: 9px; font-weight: 600; text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
-  }
-  .minimap-status {
+  .minimap-row-status {
     font-size: 9px; font-weight: 700; text-transform: uppercase;
-    font-family: 'JetBrains Mono', monospace;
+    padding: 2px 6px; border-radius: 3px;
+  }
+  .minimap-row-type {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
   }
 
   /* ---- Mobile terminal view ---- */

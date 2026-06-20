@@ -7,7 +7,7 @@
   import { Unicode11Addon } from '@xterm/addon-unicode11';
   import { subscribeStatus } from './stores/status.js';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null, isMobile = false } = $props();
 
   let containerEl;
   let term;
@@ -113,14 +113,20 @@
   }
 
   onMount(() => {
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
     term = new Terminal({
       allowProposedApi: true,
       cursorBlink: true,
       cursorStyle: 'block',
-      fontSize: 13,
+      fontSize: isMobile ? 11 : 13,
       fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
       lineHeight: 1.2,
-      rightClickSelectsWord: true,
+      scrollback: 5000,
+      rightClickSelectsWord: !isTouchDevice,
+      // Touch scrolling: xterm.js uses the viewport div for scrollback;
+      // allow native touch scroll on that element
+      overviewRuler: undefined,
       theme: {
         background: '#0b0e11',
         foreground: '#c5cdd9',
@@ -156,6 +162,28 @@
 
     term.open(containerEl);
     fitAddon.fit();
+
+    // Mobile: auto-focus so on-screen keyboard appears and input goes to terminal
+    if (isMobile && focused) {
+      // Delay focus to allow render to settle — iOS Safari needs this
+      setTimeout(() => term.focus(), 150);
+    }
+
+    if (isTouchDevice) {
+      // Touch tap → focus terminal for keyboard input
+      containerEl.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length === 1) {
+          term.focus();
+        }
+      }, { passive: true });
+
+      // Enable touch scrolling on the xterm viewport
+      const viewport = containerEl.querySelector('.xterm-viewport');
+      if (viewport) {
+        viewport.style.overflowY = 'scroll';
+        viewport.style.webkitOverflowScrolling = 'touch';
+      }
+    }
 
     // Clipboard handling
     term.attachCustomKeyEventHandler((ev) => {
@@ -435,5 +463,12 @@
   }
   .term-container :global(.xterm-viewport) {
     overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* On touch devices, ensure the hidden textarea (keyboard input target) is reachable */
+  .term-container :global(.xterm-helper-textarea) {
+    opacity: 0;
+    position: absolute;
+    /* Don't use display:none — the textarea must be focusable for mobile keyboard */
   }
 </style>

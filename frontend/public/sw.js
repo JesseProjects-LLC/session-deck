@@ -3,7 +3,7 @@
 // Cache exists only as offline fallback (e.g. brief server restart).
 // Terminal content is live via WebSocket, so offline mode isn't meaningful.
 
-const CACHE_NAME = 'session-deck-v2';
+const CACHE_NAME = 'session-deck-v4';
 
 self.addEventListener('install', (event) => {
   // Take over immediately — don't wait for old tabs to close

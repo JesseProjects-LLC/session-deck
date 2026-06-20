@@ -90,6 +90,15 @@ export async function buildServer() {
     }
   });
 
+  // Prevent browser caching of sw.js and index.html
+  fastify.addHook('onSend', (request, reply, payload, done) => {
+    const url = request.url;
+    if (url === '/sw.js' || url === '/' || url === '/index.html') {
+      reply.header('cache-control', 'no-cache, no-store, must-revalidate');
+    }
+    done();
+  });
+
   // Form body parsing (for login form POST)
   const formbody = await import('@fastify/formbody');
   await fastify.register(formbody.default);
