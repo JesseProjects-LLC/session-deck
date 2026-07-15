@@ -109,6 +109,19 @@ export function getSessionPanes(node) {
 }
 
 /**
+ * Like getSessionPanes, but each entry also carries `path` — the array of
+ * child indices locating that leaf in the layout tree. Needed so views that
+ * flatten the tree (mobile single-pane, zoomed) can reassign the correct pane
+ * via updatePaneSession instead of collapsing to the root.
+ * Returns array of { session, host, path }.
+ */
+export function getSessionPanesWithPaths(node, path = []) {
+  if (node.session) return [{ session: node.session, host: node.host || 'reliant', path }];
+  if (node.children) return node.children.flatMap((c, i) => getSessionPanesWithPaths(c, [...path, i]));
+  return [];
+}
+
+/**
  * Apply real session names to a template layout.
  * Replaces placeholder session names with names from the provided list,
  * cycling if there are more panes than sessions.

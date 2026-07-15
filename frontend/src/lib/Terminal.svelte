@@ -7,7 +7,11 @@
   import { Unicode11Addon } from '@xterm/addon-unicode11';
   import { subscribeStatus } from './stores/status.js';
 
-  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null, isMobile = false } = $props();
+  let { session = 'main', host = 'reliant', focused = false, zoomed = false, sessionType = 'terminal', sessionTypeColor = '#6b7688', sessionTypeLabel = 'TERM', sessionContext = null, paneTitle = null, onSessionClick = null, onZoom = null, onSplit = null, onClose = null, onDragStart = null, onContextMenu = null, isMobile = false, onCtrlConsumed = null } = $props();
+
+  // When true, the next typed character is transformed into a control char
+  // (set by the mobile key bar's sticky Ctrl). Cleared after one keystroke.
+  let ctrlPending = false;
 
   let containerEl;
   let term;
@@ -25,6 +29,7 @@
   let connected = $state(false);
   let connecting = $state(false);
   let error = $state(null);
+  let initError = $state(null); // visible message if xterm fails to initialize
   let paneStatus = $state(null); // { status, prevStatus, confidence }
   let unsubStatus;
 
@@ -82,6 +87,26 @@
       connecting = false;
       error = 'Auth failed';
     });
+  }
+
+  // Imperative API for external controls (e.g. the mobile key accessory bar).
+  // Sends raw bytes/escape sequences to the PTY and keeps the terminal focused
+  // so the soft keyboard stays up.
+  export function sendInput(data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(data);
+    }
+    term?.focus();
+  }
+
+  export function focusTerminal() {
+    term?.focus();
+  }
+
+  // Arm sticky Ctrl: the next single character typed (from the soft keyboard or
+  // the key bar) becomes a control char. Called by the mobile key bar.
+  export function setCtrlPending(v) {
+    ctrlPending = !!v;
   }
 
   function disconnect() {
@@ -160,64 +185,106 @@
     term.loadAddon(unicode11);
     term.unicode.activeVersion = '11';
 
-    term.open(containerEl);
-    fitAddon.fit();
+    // xterm's term.open() reads the container's dimensions and crashes
+    // ("reading 'width'") if the element is 0×0 — which happens on mobile where
+    // the flex container isn't laid out yet at mount. So defer the whole init
+    // until the container has real size; the ResizeObserver triggers it, and we
+    // also try immediately (desktop) and on the next frame.
+    let opened = false;
+    let openAttempts = 0;
+    function finishInit() {
+      if (opened || !containerEl) return;
+      if (containerEl.offsetWidth < 1 || containerEl.offsetHeight < 1) return; // not laid out yet
+      opened = true;
 
-    // Mobile: auto-focus so on-screen keyboard appears and input goes to terminal
-    if (isMobile && focused) {
-      // Delay focus to allow render to settle — iOS Safari needs this
-      setTimeout(() => term.focus(), 150);
-    }
-
-    if (isTouchDevice) {
-      // Touch tap → focus terminal for keyboard input
-      containerEl.addEventListener('touchend', (e) => {
-        if (e.changedTouches.length === 1) {
-          term.focus();
+      // xterm measures glyph size from the font at open(). If the web font
+      // (JetBrains Mono) is still loading, glyphs are 0-width and open() throws
+      // "reading 'width'". Guard it, and retry after fonts settle.
+      try {
+        term.open(containerEl);
+        initError = null;
+      } catch (e) {
+        openAttempts++;
+        opened = false; // allow retry
+        if (openAttempts <= 20) {
+          const retry = () => finishInit();
+          if (document?.fonts?.ready) document.fonts.ready.then(() => setTimeout(retry, 100));
+          else setTimeout(retry, 150);
+          return;
         }
-      }, { passive: true });
-
-      // Enable touch scrolling on the xterm viewport
-      const viewport = containerEl.querySelector('.xterm-viewport');
-      if (viewport) {
-        viewport.style.overflowY = 'scroll';
-        viewport.style.webkitOverflowScrolling = 'touch';
+        initError = 'Terminal failed to initialize: ' + (e?.message || e);
+        return;
       }
-    }
+      try { fitAddon.fit(); } catch { /* refit happens via ResizeObserver */ }
 
-    // Clipboard handling
-    term.attachCustomKeyEventHandler((ev) => {
-      // Ctrl+C — copy if text is selected, otherwise send SIGINT to terminal
-      if (ev.ctrlKey && !ev.shiftKey && ev.key === 'c' && ev.type === 'keydown') {
-        if (term.hasSelection()) {
-          navigator.clipboard.writeText(term.getSelection()).catch(() => {});
-          term.clearSelection();
-          return false; // prevent terminal from getting Ctrl+C
-        }
-        return true; // no selection — let SIGINT through
+      // Mobile: auto-focus so the on-screen keyboard appears
+      if (isMobile && focused) {
+        setTimeout(() => term.focus(), 150);
       }
-      // Ctrl+V — paste from clipboard
-      if (ev.ctrlKey && !ev.shiftKey && ev.key === 'v' && ev.type === 'keydown') {
-        navigator.clipboard.readText().then(text => {
-          if (text && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send('\x1b[200~' + text + '\x1b[201~');
+
+      if (isTouchDevice) {
+        // Touch tap → focus terminal for keyboard input
+        containerEl.addEventListener('touchend', (e) => {
+          if (e.changedTouches.length === 1) {
+            term.focus();
           }
-        }).catch(() => {});
-        return false;
-      }
-      return true;
-    });
+        }, { passive: true });
 
-    // Terminal input → WebSocket
-    term.onData((data) => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        // Enable touch scrolling on the xterm viewport
+        const viewport = containerEl.querySelector('.xterm-viewport');
+        if (viewport) {
+          viewport.style.overflowY = 'scroll';
+          viewport.style.webkitOverflowScrolling = 'touch';
+        }
       }
-    });
 
-    // Resize observer — debounced + suppressed during output to prevent resize/redraw loops
+      // Clipboard handling
+      term.attachCustomKeyEventHandler((ev) => {
+        // Ctrl+C — copy if text is selected, otherwise send SIGINT to terminal
+        if (ev.ctrlKey && !ev.shiftKey && ev.key === 'c' && ev.type === 'keydown') {
+          if (term.hasSelection()) {
+            navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+            term.clearSelection();
+            return false; // prevent terminal from getting Ctrl+C
+          }
+          return true; // no selection — let SIGINT through
+        }
+        // Ctrl+V — paste from clipboard
+        if (ev.ctrlKey && !ev.shiftKey && ev.key === 'v' && ev.type === 'keydown') {
+          navigator.clipboard.readText().then(text => {
+            if (text && ws && ws.readyState === WebSocket.OPEN) {
+              ws.send('\x1b[200~' + text + '\x1b[201~');
+            }
+          }).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+
+      // Terminal input → WebSocket
+      term.onData((data) => {
+        // Sticky Ctrl from the key bar: transform the next char to a control code
+        if (ctrlPending) {
+          ctrlPending = false;
+          onCtrlConsumed?.();
+          if (data.length === 1) {
+            const up = data.toUpperCase().charCodeAt(0);
+            if (up >= 64 && up <= 95) data = String.fromCharCode(up & 0x1f); // @ A-Z [ \ ] ^ _
+          }
+        }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+
+      // Connect once the terminal is open and sized
+      connect();
+    }
+
+    // Resize observer — drives the deferred init and, once open, debounced refits
     const resizeObserver = new ResizeObserver(() => {
       if (!fitAddon || !containerEl) return;
+      if (!opened) { finishInit(); return; }
       // Skip if container is too small (causes oscillation) or output is streaming
       if (containerEl.offsetWidth < 80 || containerEl.offsetHeight < 40) return;
       if (suppressResize) return;
@@ -232,8 +299,10 @@
     });
     resizeObserver.observe(containerEl);
 
-    // Connect
-    connect();
+    // Desktop: container is already sized, so open immediately. Mobile: these
+    // no-op until the ResizeObserver fires with real dimensions.
+    finishInit();
+    requestAnimationFrame(finishInit);
 
     // Subscribe to pane status
     unsubStatus = subscribeStatus((statusMap) => {
@@ -322,7 +391,11 @@
       </button>
     </div>
   </div>
-  <div class="term-container" bind:this={containerEl}></div>
+  <div class="term-container" bind:this={containerEl}>
+    {#if initError}
+      <div class="init-error">{initError}</div>
+    {/if}
+  </div>
 </div>
 
 <style>
@@ -393,6 +466,11 @@
 
   .pane-actions { display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
   .term-pane:hover .pane-actions { opacity: 1; }
+  /* On touch devices there's no hover — always show actions so the first tap
+     focuses the pane instead of being swallowed by a synthetic hover. */
+  @media (hover: none) {
+    .pane-actions { opacity: 1; }
+  }
   .pane-act {
     width: 18px; height: 18px; border-radius: 3px; border: none;
     background: transparent; color: #3d4450; cursor: pointer;
@@ -456,6 +534,10 @@
     padding: 4px;
     overflow: hidden;
   }
+  .init-error {
+    color: #f07178; font-size: 12px; font-family: 'JetBrains Mono', monospace;
+    padding: 10px; line-height: 1.5;
+  }
 
   /* xterm.js base styles */
   .term-container :global(.xterm) {
@@ -464,6 +546,10 @@
   .term-container :global(.xterm-viewport) {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
+    /* Let one/two-finger vertical drags scroll the scrollback (trackpad wheel
+       events on iPad also route here) instead of panning the page. */
+    touch-action: pan-y;
+    overscroll-behavior: contain;
   }
   /* On touch devices, ensure the hidden textarea (keyboard input target) is reachable */
   .term-container :global(.xterm-helper-textarea) {

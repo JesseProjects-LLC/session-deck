@@ -2,7 +2,8 @@
   import { onMount, onDestroy } from 'svelte';
   import SplitPane from './lib/SplitPane.svelte';
   import Terminal from './lib/Terminal.svelte';
-  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, getSessionPanes, movePane, applySessionsToTemplate } from './lib/stores/layout.js';
+  import MobileKeyBar from './lib/MobileKeyBar.svelte';
+  import { countPanes, presets, leaf, removePane, splitPaneAt, getSessionNames, getSessionPanes, getSessionPanesWithPaths, movePane, applySessionsToTemplate } from './lib/stores/layout.js';
   import {
     loadWorkspaces, getWorkspaces, getActiveId, getActiveWorkspace,
     setActive, updateLayout, subscribe, updatePaneSession,
@@ -27,7 +28,21 @@
   // Mobile/responsive state
   let isMobile = $state(false);
   let isTablet = $state(false);
+  let isTouch = $state(false);
+  let isPortrait = $state(false);
+  // View mode for touch devices: 'auto' | 'split' | 'single'.
+  // 'auto' → single-pane on phones and touch-portrait; split otherwise.
+  let viewMode = $state('auto');
+  // Whether to render the single-pane (minimap) experience vs the split view.
+  let useSinglePane = $derived(
+    viewMode === 'single' ||
+    (viewMode === 'auto' && (isMobile || (isTouch && isPortrait)))
+  );
+  // Show the touch view toggle for touch devices (and phones)
+  let showViewToggle = $derived(isTouch || isMobile || isTablet);
   let mobileActivePane = $state(0); // index of active pane in mobile single-pane view
+  let mobileTermRef = $state(null); // bound Terminal instance for the mobile key bar
+  let mobileKeyBarRef = $state(null); // bound MobileKeyBar instance (to clear sticky Ctrl)
   let mobileMinimap = $state(true); // true = minimap grid, false = single terminal
   let readOnlyMode = $state(false);
 
@@ -465,11 +480,11 @@
     }
   }
 
-  function handleZoom(id, session, host) {
+  function handleZoom(id, session, host, path = []) {
     if (zoomedPane && zoomedPane.id === id) {
       zoomedPane = null; // Unzoom
     } else {
-      zoomedPane = { id, session, host };
+      zoomedPane = { id, session, host, path };
       focusedId = id;
     }
   }
@@ -1273,6 +1288,8 @@
     function checkViewport() {
       isMobile = window.innerWidth < 768;
       isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+      isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      isPortrait = window.innerHeight >= window.innerWidth;
     }
     checkViewport();
     window.addEventListener('resize', checkViewport);
@@ -1364,6 +1381,13 @@
       <span class="auth-user">{authUser.name}</span>
       <a class="auth-logout" href="/auth/logout" title="Sign out">Sign out</a>
     {/if}
+    {#if showViewToggle}
+      <button
+        class="topnav-btn view-toggle"
+        onclick={() => viewMode = useSinglePane ? 'split' : 'single'}
+        title={useSinglePane ? 'Switch to split (multi-pane) view' : 'Switch to single-pane view'}
+      >{useSinglePane ? '▦ Split' : '▯ Single'}</button>
+    {/if}
     <button
       class="topnav-btn"
       class:active={showPropsPanel}
@@ -1387,12 +1411,12 @@
             sessionTypeLabel={getTypeInfo(zoomedPane.session).label}
             sessionContext={getTypeInfo(zoomedPane.session).context}
             onZoom={() => { zoomedPane = null; }}
-            onSessionClick={() => openSessionPicker([], zoomedPane.session)}
-            onContextMenu={(e) => handlePaneContextMenu(e, [], zoomedPane.session, zoomedPane.host)}
+            onSessionClick={() => openSessionPicker(zoomedPane.path || [], zoomedPane.session)}
+            onContextMenu={(e) => handlePaneContextMenu(e, zoomedPane.path || [], zoomedPane.session, zoomedPane.host)}
           />
         </div>
-      {:else if isMobile && activeLayout && activeId}
-        {@const panes = getSessionPanes(activeLayout)}
+      {:else if useSinglePane && activeLayout && activeId}
+        {@const panes = getSessionPanesWithPaths(activeLayout)}
         {#if panes.length === 0}
           <div class="center-msg">No panes</div>
         {:else if mobileMinimap}
@@ -1455,6 +1479,7 @@
               </div>
               <div class="mobile-pane">
                 <Terminal
+                  bind:this={mobileTermRef}
                   session={pane.session}
                   host={pane.host}
                   focused={true}
@@ -1462,10 +1487,17 @@
                   sessionTypeColor={getTypeInfo(pane.session).color}
                   sessionTypeLabel={getTypeInfo(pane.session).label}
                   sessionContext={getTypeInfo(pane.session).context}
-                  onSessionClick={() => openSessionPicker([], pane.session)}
-                  onContextMenu={(e) => handlePaneContextMenu(e, [], pane.session, pane.host)}
+                  onSessionClick={() => openSessionPicker(pane.path, pane.session)}
+                  onContextMenu={(e) => handlePaneContextMenu(e, pane.path, pane.session, pane.host)}
+                  onCtrlConsumed={() => mobileKeyBarRef?.clearCtrl()}
                 />
               </div>
+              <MobileKeyBar
+                bind:this={mobileKeyBarRef}
+                onKey={(seq) => mobileTermRef?.sendInput(seq)}
+                onShowKeyboard={() => mobileTermRef?.focusTerminal()}
+                onCtrlToggle={(active) => mobileTermRef?.setCtrlPending(active)}
+              />
             </div>
           {/key}
         {/if}
@@ -3516,6 +3548,8 @@
     .wt .cnt { display: none; }
     .add-btn { padding: 2px 6px; font-size: 14px; }
     .topnav-btn { display: none; }
+    /* Keep the view toggle reachable on small/touch screens */
+    .topnav-btn.view-toggle { display: inline-flex; }
     .pane-count { display: none; }
     .auth-user { display: none; }
     .auth-logout { display: none; }

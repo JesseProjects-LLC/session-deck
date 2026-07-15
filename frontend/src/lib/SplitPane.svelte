@@ -143,7 +143,7 @@
       sessionContext={getTypeInfo(node.session).context}
       paneTitle={node.paneTitle || null}
       onSessionClick={() => handleSessionClick(node.session)}
-      onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant')}
+      onZoom={() => onZoom(nodeId(node), node.session, node.host || 'reliant', path)}
       onSplit={(dir) => onSplit(path, dir)}
       onClose={() => onClose(path)}
       onDragStart={() => {}}
