@@ -153,9 +153,6 @@
         lineHeight: 1.2,
         scrollback: 5000,
         rightClickSelectsWord: !isTouchDevice,
-        // Touch scrolling: xterm.js uses the viewport div for scrollback;
-        // allow native touch scroll on that element
-        overviewRuler: undefined,
         theme: {
           background: '#0b0e11',
           foreground: '#c5cdd9',
