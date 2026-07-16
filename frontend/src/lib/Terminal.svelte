@@ -140,82 +140,95 @@
   onMount(() => {
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
-    term = new Terminal({
-      allowProposedApi: true,
-      cursorBlink: true,
-      cursorStyle: 'block',
-      fontSize: isMobile ? 11 : 13,
-      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
-      lineHeight: 1.2,
-      scrollback: 5000,
-      rightClickSelectsWord: !isTouchDevice,
-      // Touch scrolling: xterm.js uses the viewport div for scrollback;
-      // allow native touch scroll on that element
-      overviewRuler: undefined,
-      theme: {
-        background: '#0b0e11',
-        foreground: '#c5cdd9',
-        cursor: '#7fd962',
-        selectionBackground: 'rgba(61, 139, 253, 0.3)',
-        black: '#0a0e14',
-        red: '#f07178',
-        green: '#7fd962',
-        yellow: '#ffb454',
-        blue: '#3d8bfd',
-        magenta: '#c792ea',
-        cyan: '#56d4dd',
-        white: '#c5cdd9',
-        brightBlack: '#3d4450',
-        brightRed: '#f07178',
-        brightGreen: '#7fd962',
-        brightYellow: '#ffb454',
-        brightBlue: '#3d8bfd',
-        brightMagenta: '#c792ea',
-        brightCyan: '#56d4dd',
-        brightWhite: '#ffffff',
-      },
-    });
+    // Create a fresh Terminal + addons. Called again if a failed open() left a
+    // half-initialized instance (see openAndWire) so the surviving terminal is
+    // always cleanly wired.
+    function createTerm() {
+      term = new Terminal({
+        allowProposedApi: true,
+        cursorBlink: true,
+        cursorStyle: 'block',
+        fontSize: isMobile ? 11 : 13,
+        fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace",
+        lineHeight: 1.2,
+        scrollback: 5000,
+        rightClickSelectsWord: !isTouchDevice,
+        // Touch scrolling: xterm.js uses the viewport div for scrollback;
+        // allow native touch scroll on that element
+        overviewRuler: undefined,
+        theme: {
+          background: '#0b0e11',
+          foreground: '#c5cdd9',
+          cursor: '#7fd962',
+          selectionBackground: 'rgba(61, 139, 253, 0.3)',
+          black: '#0a0e14',
+          red: '#f07178',
+          green: '#7fd962',
+          yellow: '#ffb454',
+          blue: '#3d8bfd',
+          magenta: '#c792ea',
+          cyan: '#56d4dd',
+          white: '#c5cdd9',
+          brightBlack: '#3d4450',
+          brightRed: '#f07178',
+          brightGreen: '#7fd962',
+          brightYellow: '#ffb454',
+          brightBlue: '#3d8bfd',
+          brightMagenta: '#c792ea',
+          brightCyan: '#56d4dd',
+          brightWhite: '#ffffff',
+        },
+      });
 
-    fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon());
-    term.loadAddon(new ClipboardAddon());
+      fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+      term.loadAddon(new WebLinksAddon());
+      term.loadAddon(new ClipboardAddon());
 
-    const unicode11 = new Unicode11Addon();
-    term.loadAddon(unicode11);
-    term.unicode.activeVersion = '11';
+      const unicode11 = new Unicode11Addon();
+      term.loadAddon(unicode11);
+      term.unicode.activeVersion = '11';
+    }
+    createTerm();
 
-    // xterm's term.open() reads the container's dimensions and crashes
-    // ("reading 'width'") if the element is 0×0 — which happens on mobile where
-    // the flex container isn't laid out yet at mount. So defer the whole init
-    // until the container has real size; the ResizeObserver triggers it, and we
-    // also try immediately (desktop) and on the next frame.
+    // xterm's term.open() reads the container's dimensions and measures glyph
+    // size. It crashes ("reading 'width'") if the element is 0×0 (mobile flex
+    // container not laid out yet) OR if the web font's glyphs still measure
+    // 0-width during load. Retrying is required — BUT re-opening the same
+    // half-initialized instance leaves xterm's keyboard handlers unwired (focus
+    // works, typing is dead). So on failure we DISPOSE and recreate a fresh
+    // terminal before retrying, guaranteeing the surviving instance is fully
+    // wired. Deferred until the container has real size (ResizeObserver drives it).
     let opened = false;
     let openAttempts = 0;
     function finishInit() {
       if (opened || !containerEl) return;
       if (containerEl.offsetWidth < 1 || containerEl.offsetHeight < 1) return; // not laid out yet
-      opened = true;
 
-      // xterm measures glyph size from the font at open(). If the web font
-      // (JetBrains Mono) is still loading, glyphs are 0-width and open() throws
-      // "reading 'width'". Guard it, and retry after fonts settle.
       try {
         term.open(containerEl);
-        initError = null;
       } catch (e) {
         openAttempts++;
-        opened = false; // allow retry
-        if (openAttempts <= 20) {
-          const retry = () => finishInit();
-          if (document?.fonts?.ready) document.fonts.ready.then(() => setTimeout(retry, 100));
-          else setTimeout(retry, 150);
+        if (openAttempts <= 40) {
+          // Discard the half-opened instance and retry on a clean one.
+          try { term.dispose(); } catch { /* ignore */ }
+          createTerm();
+          setTimeout(finishInit, 100);
           return;
         }
         initError = 'Terminal failed to initialize: ' + (e?.message || e);
         return;
       }
+
+      opened = true;
+      initError = null;
       try { fitAddon.fit(); } catch { /* refit happens via ResizeObserver */ }
+
+      // Focus on ANY pointer interaction (mouse, touch, or pen) so a single
+      // click/tap lets you type immediately.
+      containerEl.addEventListener('pointerdown', () => {
+        term.focus();
+      });
 
       // Mobile: auto-focus so the on-screen keyboard appears
       if (isMobile && focused) {
@@ -223,13 +236,6 @@
       }
 
       if (isTouchDevice) {
-        // Touch tap → focus terminal for keyboard input
-        containerEl.addEventListener('touchend', (e) => {
-          if (e.changedTouches.length === 1) {
-            term.focus();
-          }
-        }, { passive: true });
-
         // Enable touch scrolling on the xterm viewport
         const viewport = containerEl.querySelector('.xterm-viewport');
         if (viewport) {
@@ -238,6 +244,12 @@
         }
       }
 
+      wireInput();
+      connect();
+    }
+
+    // Attach xterm input handlers (clipboard shortcuts + data → WebSocket).
+    function wireInput() {
       // Clipboard handling
       term.attachCustomKeyEventHandler((ev) => {
         // Ctrl+C — copy if text is selected, otherwise send SIGINT to terminal
@@ -276,9 +288,6 @@
           ws.send(data);
         }
       });
-
-      // Connect once the terminal is open and sized
-      connect();
     }
 
     // Resize observer — drives the deferred init and, once open, debounced refits
